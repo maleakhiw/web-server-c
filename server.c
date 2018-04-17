@@ -31,12 +31,12 @@ int main(int argc, char *argv[]) {
     char *web_root_path;
     struct sockaddr_in server_address, client_address;
     socklen_t client_address_len;
-    int n, i;
+    int n;
 
     /* Initialisation */
     // Check that argument to command line is sufficient
     if (argc != ARGUMENT) {
-        fprintf(stderr, "./server [port number] [path to web root]\n");
+        fprintf(stderr, "Please provide the correct command: ./server [port number] [path to web root]\n");
         exit(1);
     }
 
@@ -49,9 +49,9 @@ int main(int argc, char *argv[]) {
     }
 
     // Initialise address, buffers
-    memset(&server_address, '0', sizeof(server_address));
-    memset(receive_buffer, '0', RECEIVE_BUFFER_LENGTH);
-    memset(send_buffer, '0', SEND_BUFFER_LENGTH);
+    memset(&server_address, 0, sizeof(server_address));
+    memset(receive_buffer, 0, RECEIVE_BUFFER_LENGTH);
+    memset(send_buffer, 0, SEND_BUFFER_LENGTH);
 
     /* Create Socket */
     socket_descriptor = socket(AF_INET, SOCK_STREAM, 0);
@@ -93,11 +93,13 @@ int main(int argc, char *argv[]) {
 
     /* Receive client request and process it */
     // Read client's request
-    while ((n = recv(new_socket_descriptor, receive_buffer, RECEIVE_BUFFER_LENGTH, 0)) > 0) {
-        // Process client's request
-        // TODO: Process client request, for now just print that
-        printf("Here is the message from client: %s\n", receive_buffer);
-    }
+    // while ((n = recv(new_socket_descriptor, receive_buffer, RECEIVE_BUFFER_LENGTH, 0)) > 0) {
+    //     // Process client's request
+    //     // TODO: Process client request, for now just print that
+    //     printf("Here is the message from client: %s\n", receive_buffer);
+    // }
+    n = recv(new_socket_descriptor, receive_buffer, 255, 0);
+    printf("Here is the message from client: %s\n", receive_buffer);
     // Check for ERROR
     if (n < 0) {
         perror("ERROR receiving from socket");
@@ -107,8 +109,9 @@ int main(int argc, char *argv[]) {
     }
 
     /* Send response to client */
-    strcpy(send_buffer, "Message has been received");
-    n = send(new_socket_descriptor, send_buffer, sizeof("Message has been received"));
+    // strcpy(send_buffer, "Message has been received");
+    // printf("%s", send_buffer);
+    n = send(new_socket_descriptor, "Message has been received", sizeof("Message has been received"), 0);
     // Check for ERROR
     if (n < 0) {
         perror("ERROR sending from socket");
