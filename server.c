@@ -31,7 +31,7 @@ int main(int argc, char *argv[]) {
     socket_descriptor = socket(AF_INET, SOCK_STREAM, 0);
 
     // Check for error, socket_descriptor will be -1 if there is ERROR
-    if (sockfd < 0) {
+    if (socket_descriptor < 0) {
         perror("ERROR opening socket");
         exit(1);
     }
