@@ -22,13 +22,16 @@
 #define WEB_ROOT_PATH_INDEX 2
 #define MAX_RESERVED_PORT 1024
 #define BACKLOG 10
+#define RECEIVE_BUFFER_LENGTH 256
+#define SEND_BUFFER_LENGTH 256
 
 int main(int argc, char *argv[]) {
     int socket_descriptor, port_number, new_socket_descriptor;
-    char receive_buffer[256], send_buffer[256];
+    char receive_buffer[RECEIVE_BUFFER_LENGTH], send_buffer[SEND_BUFFER_LENGTH];
     char *web_root_path;
     struct sockaddr_in server_address, client_address;
     socklen_t client_address_len;
+    int n, i;
 
     /* Initialisation */
     // Check that argument to command line is sufficient
@@ -47,8 +50,8 @@ int main(int argc, char *argv[]) {
 
     // Initialise address, buffers
     memset(&server_address, '0', sizeof(server_address));
-    memset(receive_buffer, '0', 256);
-    memset(send_buffer, '0', 256);
+    memset(receive_buffer, '0', RECEIVE_BUFFER_LENGTH);
+    memset(send_buffer, '0', SEND_BUFFER_LENGTH);
 
     /* Create Socket */
     socket_descriptor = socket(AF_INET, SOCK_STREAM, 0);
@@ -68,6 +71,7 @@ int main(int argc, char *argv[]) {
     // Bind the socket with address (IP and port number)
     if (bind(socket_descriptor, (struct sockaddr *) &server_address, sizeof(server_address)) < 0) {
         perror("ERROR on binding process");
+        close(socket_descriptor);
         exit(1);
     }
 
@@ -83,10 +87,38 @@ int main(int argc, char *argv[]) {
     // Check for ERROR
     if (new_socket_descriptor < 0) {
         perror("ERROR on accept");
+        close(socket_descriptor);
         exit(1);
     }
 
-    printf("Success accepting %d\n", new_socket_descriptor);
+    /* Receive client request and process it */
+    // Read client's request
+    while ((n = recv(new_socket_descriptor, receive_buffer, RECEIVE_BUFFER_LENGTH, 0)) > 0) {
+        // Process client's request
+        // TODO: Process client request, for now just print that
+        printf("Here is the message from client: %s\n", receive_buffer);
+    }
+    // Check for ERROR
+    if (n < 0) {
+        perror("ERROR receiving from socket");
+        close(new_socket_descriptor);
+        close(socket_descriptor);
+        exit(1);
+    }
 
+    /* Send response to client */
+    strcpy(send_buffer, "Message has been received");
+    n = send(new_socket_descriptor, send_buffer, sizeof("Message has been received"));
+    // Check for ERROR
+    if (n < 0) {
+        perror("ERROR sending from socket");
+        close(new_socket_descriptor);
+        close(socket_descriptor);
+        exit(1);
+    }
+
+    /* Close socket */
+    close(new_socket_descriptor);
+    close(socket_descriptor);
     return 0;
 }
