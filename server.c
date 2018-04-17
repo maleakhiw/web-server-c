@@ -23,11 +23,33 @@
 #define WEB_ROOT_PATH_INDEX 2
 #define BACKLOG 10
 #define BUFFER_LENGTH 2000
+#define URI_POSITION 2
 
+// Example of data send back by the server
+char webpage[] =
+"HTTP/1.1 200 OK\r\n"
+"Content-Type: text/html; charset=UTF-8\r\n\r\n"
+"<!DOCTYPE html>\r\n"
+"<html><head><title>ShellWaveX</title>\r\n"
+"<style> body {background-color: #FFFF00} </style></head> \r\n"
+"<body><center><h1>Hello World!</h1></center></body></html>\r\n";
+
+/* Get relative path from receiver_buffer */
+char *get_relative_path(char *receive_buffer) {
+    char *token;
+
+    // Get the URI (second token)
+    token = strtok(receive_buffer, " ");
+    token = strtok(NULL, " ");
+
+    return token;
+}
+
+/* Main function */
 int main(int argc, char *argv[]) {
     int socket_descriptor, port_number, new_socket_descriptor;
     char *receive_buffer, send_buffer[BUFFER_LENGTH];
-    char *web_root_path;
+    char *web_root_path, *relative_path, *full_path;
     struct sockaddr_in server_address, client_address;
     socklen_t client_address_len;
     int n;
@@ -93,8 +115,14 @@ int main(int argc, char *argv[]) {
         /* Receive client request and process it */
         // Read client's request
         n = recv(new_socket_descriptor, receive_buffer, BUFFER_LENGTH, 0);
-        printf("Here is the message from client: %s\n", receive_buffer);
-        // Check for ERROR
+        printf("%s\n", receive_buffer);
+        // // for (i = 0; i < 20; i++) {
+        // //     printf("Cut the %d element %c\n", i, receive_buffer[i]);
+        // //     if (receive_buffer[i] == '\n') {
+        // //         printf("YEYYYYY");
+        // //     }
+        // // }
+        // // Check for ERROR
         if (n < 0) {
             perror("ERROR receiving from socket");
             close(new_socket_descriptor);
@@ -102,9 +130,19 @@ int main(int argc, char *argv[]) {
             exit(1);
         }
 
+        // Get the URI of the client request
+        relative_path = get_relative_path(receive_buffer);
+
+        // Combine to get full path
+        full_path = (char *) malloc((strlen(relative_path) + strlen(web_root_path) + 1) * sizeof(char));
+        assert(full_path != NULL);
+        strcpy(full_path, web_root_path);
+        strcat(full_path, relative_path);
+        // printf("fullpath: %s", full_path);
+
         /* Send response to client */
-        strcpy(send_buffer, "Message has been received");
-        n = send(new_socket_descriptor, send_buffer, sizeof("Message has been received"), 0);
+        strcpy(send_buffer, webpage);
+        n = send(new_socket_descriptor, send_buffer, sizeof(webpage) - 1, 0);
         // Check for ERROR
         if (n < 0) {
             perror("ERROR sending from socket");
