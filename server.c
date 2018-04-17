@@ -24,7 +24,7 @@ int main(int argc, char *argv[]) {
 
     // Check that argument to command line is sufficient
     if (argc != ARGUMENT) {
-        fprintf(stderr, "./server [port number] [path to web root]");
+        fprintf(stderr, "./server [port number] [path to web root]\n");
         exit(1);
     }
 
