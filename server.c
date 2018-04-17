@@ -20,6 +20,7 @@
 #define ARGUMENT 3
 
 int main(int argc, char *argv[]) {
+    int socket_descriptor;
 
     // Check that argument to command line is sufficient
     if (argc != ARGUMENT) {
