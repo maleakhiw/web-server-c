@@ -1,10 +1,10 @@
-/**
+/*
  * Author: Maleakhi Agung Wijaya
  * Student ID: 784091
  * Date: 17/04/2018
  */
 
- /** Library */
+ /* Library */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -17,12 +17,12 @@
 #include <unistd.h>
 #include <pthread.h>
 
-/** Constant */
+/* Constant */
 #define ARGUMENT 3
 #define PORT_INDEX 1
 #define WEB_ROOT_PATH_INDEX 2
 #define BACKLOG 10
-#define BUFFER_LENGTH 1000
+#define BUFFER_LENGTH 2000
 
 int main(int argc, char *argv[]) {
     int socket_descriptor, port_number, new_socket_descriptor;
@@ -79,41 +79,44 @@ int main(int argc, char *argv[]) {
     /* Accept Client Connection */
     client_address_len = sizeof(client_address);
 
-    // New socket descriptor will be used to send and receive later
-    new_socket_descriptor = accept(socket_descriptor, (struct sockaddr *) &client_address, &client_address_len);
+    while(1) {
+        // New socket descriptor will be used to send and receive later
+        new_socket_descriptor = accept(socket_descriptor, (struct sockaddr *) &client_address, &client_address_len);
 
-    // Check for ERROR
-    if (new_socket_descriptor < 0) {
-        perror("ERROR on accept");
-        close(socket_descriptor);
-        exit(1);
-    }
+        // Check for ERROR
+        if (new_socket_descriptor < 0) {
+            perror("ERROR on accept");
+            close(socket_descriptor);
+            exit(1);
+        }
 
-    /* Receive client request and process it */
-    // Read client's request
-    n = recv(new_socket_descriptor, receive_buffer, BUFFER_LENGTH, 0);
-    printf("Here is the message from client: %s\n", receive_buffer);
-    // Check for ERROR
-    if (n < 0) {
-        perror("ERROR receiving from socket");
+        /* Receive client request and process it */
+        // Read client's request
+        n = recv(new_socket_descriptor, receive_buffer, BUFFER_LENGTH, 0);
+        printf("Here is the message from client: %s\n", receive_buffer);
+        // Check for ERROR
+        if (n < 0) {
+            perror("ERROR receiving from socket");
+            close(new_socket_descriptor);
+            close(socket_descriptor);
+            exit(1);
+        }
+
+        /* Send response to client */
+        strcpy(send_buffer, "Message has been received");
+        n = send(new_socket_descriptor, send_buffer, sizeof("Message has been received"), 0);
+        // Check for ERROR
+        if (n < 0) {
+            perror("ERROR sending from socket");
+            close(new_socket_descriptor);
+            close(socket_descriptor);
+            exit(1);
+        }
+
+        /* Close socket */
         close(new_socket_descriptor);
-        close(socket_descriptor);
-        exit(1);
     }
 
-    /* Send response to client */
-    strcpy(send_buffer, "Message has been received");
-    n = send(new_socket_descriptor, send_buffer, sizeof("Message has been received"), 0);
-    // Check for ERROR
-    if (n < 0) {
-        perror("ERROR sending from socket");
-        close(new_socket_descriptor);
-        close(socket_descriptor);
-        exit(1);
-    }
-
-    /* Close socket */
-    close(new_socket_descriptor);
     close(socket_descriptor);
     return 0;
 }
