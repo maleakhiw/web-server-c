@@ -8,6 +8,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -20,14 +21,12 @@
 #define ARGUMENT 3
 #define PORT_INDEX 1
 #define WEB_ROOT_PATH_INDEX 2
-#define MAX_RESERVED_PORT 1024
 #define BACKLOG 10
-#define RECEIVE_BUFFER_LENGTH 256
-#define SEND_BUFFER_LENGTH 256
+#define BUFFER_LENGTH 1000
 
 int main(int argc, char *argv[]) {
     int socket_descriptor, port_number, new_socket_descriptor;
-    char receive_buffer[RECEIVE_BUFFER_LENGTH], send_buffer[SEND_BUFFER_LENGTH];
+    char *receive_buffer, send_buffer[BUFFER_LENGTH];
     char *web_root_path;
     struct sockaddr_in server_address, client_address;
     socklen_t client_address_len;
@@ -43,15 +42,14 @@ int main(int argc, char *argv[]) {
     // Extract arguments from command line and make sure everything is valid
     port_number = atoi(argv[PORT_INDEX]);
     web_root_path = argv[WEB_ROOT_PATH_INDEX];
-    if (port_number < MAX_RESERVED_PORT) {
-        fprintf(stderr, "Port number is reserved, please choose ports above 1024\n");
-        exit(1);
-    }
 
     // Initialise address, buffers
     memset(&server_address, 0, sizeof(server_address));
-    memset(receive_buffer, 0, RECEIVE_BUFFER_LENGTH);
-    memset(send_buffer, 0, SEND_BUFFER_LENGTH);
+    memset(send_buffer, 0, BUFFER_LENGTH);
+
+    // Initialise receive buffer to BUFFER_LENGTH, but possible to realloc
+    receive_buffer = (char *) calloc(BUFFER_LENGTH, sizeof(char));
+    assert(receive_buffer != NULL);
 
     /* Create Socket */
     socket_descriptor = socket(AF_INET, SOCK_STREAM, 0);
@@ -93,12 +91,7 @@ int main(int argc, char *argv[]) {
 
     /* Receive client request and process it */
     // Read client's request
-    // while ((n = recv(new_socket_descriptor, receive_buffer, RECEIVE_BUFFER_LENGTH, 0)) > 0) {
-    //     // Process client's request
-    //     // TODO: Process client request, for now just print that
-    //     printf("Here is the message from client: %s\n", receive_buffer);
-    // }
-    n = recv(new_socket_descriptor, receive_buffer, 255, 0);
+    n = recv(new_socket_descriptor, receive_buffer, BUFFER_LENGTH, 0);
     printf("Here is the message from client: %s\n", receive_buffer);
     // Check for ERROR
     if (n < 0) {
@@ -109,9 +102,8 @@ int main(int argc, char *argv[]) {
     }
 
     /* Send response to client */
-    // strcpy(send_buffer, "Message has been received");
-    // printf("%s", send_buffer);
-    n = send(new_socket_descriptor, "Message has been received", sizeof("Message has been received"), 0);
+    strcpy(send_buffer, "Message has been received");
+    n = send(new_socket_descriptor, send_buffer, sizeof("Message has been received"), 0);
     // Check for ERROR
     if (n < 0) {
         perror("ERROR sending from socket");
