@@ -46,7 +46,7 @@ int sendall(int s, char *buf, int *len);
 
 /*****************************************************************************/
 
-//TODO: Segmentation fault due to recv = 0
+//TODO: persistent connection postman
 /* Main Function */
 int main(int argc, char *argv[]) {
     int socket_descriptor, port_number, new_socket_descriptor;
@@ -126,9 +126,6 @@ int main(int argc, char *argv[]) {
         strcpy(full_path, web_root_path);
         strcat(full_path, relative_path);
 
-        // Get the content type
-        content_type = get_content_type(relative_path);
-
         /* Send response to client */
         // Try to open the file requested by client
         file_descriptor = fopen(full_path, "r");
@@ -143,6 +140,9 @@ int main(int argc, char *argv[]) {
 
         // Send header accordingly, 200 for found file 404 otherwise
         if (file_found) {
+            // Get the content type
+            content_type = get_content_type(relative_path);
+
             len = sizeof(STATUS_OK) - 1;
             strcpy(send_buffer, STATUS_OK);
             n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
@@ -233,51 +233,51 @@ int main(int argc, char *argv[]) {
                 exit(1);
             }
 
-            // Determine which content type to send
-            if (strcmp(content_type, "html") == 0) {
-                len = sizeof(MIME_HTML) - 1;
-                strcpy(send_buffer, MIME_HTML);
-                n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
-                if (n < 0) {
-                    perror("ERROR sending from socket");
-                    close(new_socket_descriptor);
-                    close(socket_descriptor);
-                    exit(1);
-                }
-            }
-            else if (strcmp(content_type, "css") == 0) {
-                len = sizeof(MIME_CSS) - 1;
-                strcpy(send_buffer, MIME_CSS);
-                n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
-                if (n < 0) {
-                    perror("ERROR sending from socket");
-                    close(new_socket_descriptor);
-                    close(socket_descriptor);
-                    exit(1);
-                }
-            }
-            else if (strcmp(content_type, "js") == 0) {
-                len = sizeof(MIME_JS) - 1;
-                strcpy(send_buffer, MIME_JS);
-                n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
-                if (n < 0) {
-                    perror("ERROR sending from socket");
-                    close(new_socket_descriptor);
-                    close(socket_descriptor);
-                    exit(1);
-                }
-            }
-            else {
-                len = sizeof(MIME_JPG) - 1;
-                strcpy(send_buffer, MIME_JPG);
-                n = sendall(new_socket_descriptor, send_buffer, &len);   // trim the nullbyte
-                if (n < 0) {
-                    perror("ERROR sending from socket");
-                    close(new_socket_descriptor);
-                    close(socket_descriptor);
-                    exit(1);
-                }
-            }
+            // // Determine which content type to send
+            // if (strcmp(content_type, "html") == 0) {
+            //     len = sizeof(MIME_HTML) - 1;
+            //     strcpy(send_buffer, MIME_HTML);
+            //     n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
+            //     if (n < 0) {
+            //         perror("ERROR sending from socket");
+            //         close(new_socket_descriptor);
+            //         close(socket_descriptor);
+            //         exit(1);
+            //     }
+            // }
+            // else if (strcmp(content_type, "css") == 0) {
+            //     len = sizeof(MIME_CSS) - 1;
+            //     strcpy(send_buffer, MIME_CSS);
+            //     n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
+            //     if (n < 0) {
+            //         perror("ERROR sending from socket");
+            //         close(new_socket_descriptor);
+            //         close(socket_descriptor);
+            //         exit(1);
+            //     }
+            // }
+            // else if (strcmp(content_type, "js") == 0) {
+            //     len = sizeof(MIME_JS) - 1;
+            //     strcpy(send_buffer, MIME_JS);
+            //     n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
+            //     if (n < 0) {
+            //         perror("ERROR sending from socket");
+            //         close(new_socket_descriptor);
+            //         close(socket_descriptor);
+            //         exit(1);
+            //     }
+            // }
+            // else {
+            //     len = sizeof(MIME_JPG) - 1;
+            //     strcpy(send_buffer, MIME_JPG);
+            //     n = sendall(new_socket_descriptor, send_buffer, &len);   // trim the nullbyte
+            //     if (n < 0) {
+            //         perror("ERROR sending from socket");
+            //         close(new_socket_descriptor);
+            //         close(socket_descriptor);
+            //         exit(1);
+            //     }
+            // }
 
             len = sizeof(CRLF) - 1;
             strcpy(send_buffer, CRLF);
@@ -364,11 +364,14 @@ char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_soc
     char send_buffer[BUFFER_LENGTH];
     int n, len;
 
+    // Safety precaution for browser
+    if (strlen(receive_buffer) == 0) {
+        close(new_socket_descriptor);
+        return NULL;
+    }
+
     // Get the URI (second token), first token is not URI
-    // printf("receive_buffer_inside:%s\n", receive_buffer);
-    // printf("receive_buffer_address:%p\n", receive_buffer);
     token = strtok(receive_buffer, " ");
-    assert(token);
     // Safety precaution and making sure client is requesting GET
     if (strcmp(token, "GET") != 0 || token == NULL) {
         len = sizeof(STATUS_BAD_REQUEST) - 1;
