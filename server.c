@@ -17,42 +17,49 @@
 #include <unistd.h>
 #include <pthread.h>
 
+/*****************************************************************************/
+
 /* Constant */
 #define ARGUMENT 3
 #define PORT_INDEX 1
 #define WEB_ROOT_PATH_INDEX 2
 #define BACKLOG 10
 #define BUFFER_LENGTH 2000
-#define URI_POSITION 2
 
-// Example of data send back by the server
-char webpage[] =
-"HTTP/1.1 200 OK\r\n"
-"Content-Type: text/html; charset=UTF-8\r\n\r\n"
-"<!DOCTYPE html>\r\n"
-"<html><head><title>ShellWaveX</title>\r\n"
-"<style> body {background-color: #FFFF00} </style></head> \r\n"
-"<body><center><h1>Hello World!</h1></center></body></html>\r\n";
+/* Declaration */
+char *get_relative_path(char *receive_buffer);
+int setup_server(struct sockaddr_in *server_address, int port_number);
+char *get_content_type(char *relative_path);
 
-/* Get relative path from receiver_buffer */
-char *get_relative_path(char *receive_buffer) {
-    char *token;
+// // Example of data send back by the server
+// char webpage[] =
+// "\r\n<!DOCTYPE html>\r\n"
+// "<html><head><title>ShellWaveX</title>\r\n"
+// "<style> body {background-color: #FFFF00} </style></head> \r\n"
+// "<body><center><h1>Hello World!</h1></center></body></html>\r\n";
 
-    // Get the URI (second token)
-    token = strtok(receive_buffer, " ");
-    token = strtok(NULL, " ");
+const char STATUS_OK[] = "HTTP/1.0 200 OK\r\n";
+const char STATUS_NOT_FOUND[] = "HTTP/1.0 404 Not Found\r\n";
 
-    return token;
-}
+const char MIME_HTML[] = "Content-Type: text/html\r\n";
+const char MIME_JPEG[] = "Content-Type: image/jpeg\r\n";
+const char MIME_CSS[] = "Content-Type: text/css\r\n";
+const char MIME_JS[] = "Content-Type: text/javascript\r\n";
 
-/* Main function */
+const char CRLF[] = "\r\n";
+
+
+/*****************************************************************************/
+
+/* Main Function */
 int main(int argc, char *argv[]) {
     int socket_descriptor, port_number, new_socket_descriptor;
     char *receive_buffer, send_buffer[BUFFER_LENGTH];
-    char *web_root_path, *relative_path, *full_path;
+    char *web_root_path, *relative_path, *full_path, *content_type;
     struct sockaddr_in server_address, client_address;
     socklen_t client_address_len;
-    int n;
+    int n, status;
+    FILE *file_descriptor;
 
     /* Initialisation */
     // Check that argument to command line is sufficient
@@ -73,34 +80,13 @@ int main(int argc, char *argv[]) {
     receive_buffer = (char *) calloc(BUFFER_LENGTH, sizeof(char));
     assert(receive_buffer != NULL);
 
-    /* Create Socket */
-    socket_descriptor = socket(AF_INET, SOCK_STREAM, 0);
-
-    // Check for error, socket_descriptor will be -1 if there is ERROR
-    if (socket_descriptor < 0) {
-        perror("ERROR opening socket");
-        exit(1);
-    }
-
-    /* Bind Socket */
-    // Create server address that will be used to listen incoming connection
-    server_address.sin_family = AF_INET;
-    server_address.sin_addr.s_addr = htonl(INADDR_ANY);
-    server_address.sin_port = htons(port_number);
-
-    // Bind the socket with address (IP and port number)
-    if (bind(socket_descriptor, (struct sockaddr *) &server_address, sizeof(server_address)) < 0) {
-        perror("ERROR on binding process");
-        close(socket_descriptor);
-        exit(1);
-    }
-
-    /* Listen on Socket */
-    listen(socket_descriptor, BACKLOG);
+    /* Setup server */
+    socket_descriptor = setup_server(&server_address, port_number);
 
     /* Accept Client Connection */
     client_address_len = sizeof(client_address);
 
+    // Continuously accept for every clients
     while(1) {
         // New socket descriptor will be used to send and receive later
         new_socket_descriptor = accept(socket_descriptor, (struct sockaddr *) &client_address, &client_address_len);
@@ -114,15 +100,9 @@ int main(int argc, char *argv[]) {
 
         /* Receive client request and process it */
         // Read client's request
-        n = recv(new_socket_descriptor, receive_buffer, BUFFER_LENGTH, 0);
+        n = recv(new_socket_descriptor, receive_buffer, BUFFER_LENGTH-1, 0);
+        receive_buffer[n] = '\0'; // Add null byte at the end
         printf("%s\n", receive_buffer);
-        // // for (i = 0; i < 20; i++) {
-        // //     printf("Cut the %d element %c\n", i, receive_buffer[i]);
-        // //     if (receive_buffer[i] == '\n') {
-        // //         printf("YEYYYYY");
-        // //     }
-        // // }
-        // // Check for ERROR
         if (n < 0) {
             perror("ERROR receiving from socket");
             close(new_socket_descriptor);
@@ -138,23 +118,172 @@ int main(int argc, char *argv[]) {
         assert(full_path != NULL);
         strcpy(full_path, web_root_path);
         strcat(full_path, relative_path);
-        // printf("fullpath: %s", full_path);
+        printf("full_path: %s \n", full_path);
+        printf("relative_path: %s\n", relative_path);
+
+        // Get the content type
+        content_type = get_content_type(relative_path);
+        printf("Content type: %s\n", content_type);
+        printf("full_path: %s \n", full_path);
 
         /* Send response to client */
-        strcpy(send_buffer, webpage);
-        n = send(new_socket_descriptor, send_buffer, sizeof(webpage) - 1, 0);
-        // Check for ERROR
-        if (n < 0) {
-            perror("ERROR sending from socket");
-            close(new_socket_descriptor);
-            close(socket_descriptor);
-            exit(1);
+        // Try to open the file requested by client
+        file_descriptor = fopen(full_path, "r");
+        if (file_descriptor == NULL) {  // file not found
+            status = 0;
+            // fprintf(stderr, "ERROR opening file");
         }
+        else {  // file exists
+            status = 1;
+        }
+
+        // header = build_header(status, content_type);
+        // n = send(new_socket_descriptor, header, sizeof(header) - 1, 0);
+        if (status == 1) {
+            n = send(new_socket_descriptor, STATUS_OK, sizeof(STATUS_OK) - 1, 0);   // trim the nullbyte
+            printf("SENT> %s\n", STATUS_OK);
+            // n = send(new_socket_descriptor, webpage, sizeof(webpage), 0);
+
+            if (strcmp(content_type, "html") == 0) {
+                n = send(new_socket_descriptor, MIME_HTML, sizeof(MIME_HTML) - 1, 0);   // trim the nullbyte
+                printf("SENT> %s\n", MIME_HTML);
+            }
+
+            n = send(new_socket_descriptor, CRLF, sizeof(CRLF) - 1, 0); // trim the nullbyte
+            printf("SENT> %s\n", CRLF);
+
+
+            size_t bytesRead = 0;
+            // read file in chunks
+            while ((bytesRead = fread(send_buffer, 1, sizeof(send_buffer), file_descriptor))) {
+                n = send(new_socket_descriptor, send_buffer, bytesRead, 0);
+                printf("SENT> %s\n", send_buffer);
+
+                // TODO check for ERROR (n == -1)
+            }
+
+        }
+        else {
+            n = send(new_socket_descriptor, STATUS_NOT_FOUND, sizeof(STATUS_NOT_FOUND), 0);
+        }
+
+        // TODO Check for ERROR
+        // if (n < 0) {
+        //     perror("ERROR sending from socket");
+        //     close(new_socket_descriptor);
+        //     close(socket_descriptor);
+        //     exit(1);
+        // }
+
+
+
+
 
         /* Close socket */
         close(new_socket_descriptor);
+
+        // free all malloc'd objects
+        free(full_path);
     }
 
     close(socket_descriptor);
     return 0;
+}
+
+/*****************************************************************************/
+
+/*
+ * Used to setup server, starting from creating socket, address, bind, and listen
+ * @param *server_address: address of the server_address (pointer)
+ * @param port_number: port number
+ * @return socket_descriptor: file descriptor for the socket created
+ */
+int setup_server(struct sockaddr_in *server_address, int port_number) {
+    int socket_descriptor;
+
+    // Create socket
+    socket_descriptor = socket(AF_INET, SOCK_STREAM, 0);
+
+    // Check for error, socket_descriptor will be -1 if there is ERROR
+    if (socket_descriptor < 0) {
+        perror("ERROR opening socket");
+        exit(1);
+    }
+
+    // Bind socket
+    // Create server address that will be used to listen incoming connection
+    (*server_address).sin_family = AF_INET;
+    (*server_address).sin_addr.s_addr = htonl(INADDR_ANY);
+    (*server_address).sin_port = htons(port_number);
+
+    // Bind the socket with address (IP and port number)
+    if (bind(socket_descriptor, (struct sockaddr *) server_address, sizeof(*server_address)) < 0) {
+        perror("ERROR on binding process");
+        close(socket_descriptor);
+        exit(1);
+    }
+
+    // Listen socket
+    listen(socket_descriptor, BACKLOG);
+
+    return socket_descriptor;
+}
+
+/*
+ * Get relative path from the receiver buffer
+ * @param receive_buffer: buffer containing the client request
+ * @return relative_path: relative path of the file that user requested
+ */
+char *get_relative_path(char *receive_buffer) {
+    char *token;
+    char *default_token;
+
+    // Get the URI (second token), first token is not URI
+    token = strtok(receive_buffer, " ");
+
+    // Safety precaution and making sure client is requesting GET
+    assert(token != NULL);
+    if (strcmp(token, "GET") != 0) {
+        fprintf(stderr, "Client request format is not GET\n");
+        exit(1);
+    }
+
+    // Make sure that the first token is GET, if it is not then it's not valid request
+    token = strtok(NULL, " ");
+
+    // Safety precaution and making sure client is providing valid path
+    assert(token != NULL);
+    if (token[0] != '/') {
+        fprintf(stderr, "Client URI request path format inappropriate\n");
+        exit(1);
+    }
+
+    // By default / will return index.html
+    if (token[strlen(token)-1] == '/') {
+        default_token = (char *) malloc((strlen(token) + strlen("index.html") + 1) * sizeof(char));
+        assert(default_token != NULL);
+        strcpy(default_token, token);
+        strcat(default_token, "index.html");
+
+        return default_token;
+    }
+
+    return token;
+}
+
+/*
+ * Get the content type to be used in HTTP response header
+ * @param relative_path: relative path from client's request
+ * @return token: content type
+ */
+char *get_content_type(char *relative_path) {
+    char *token;
+
+    token = strtok(relative_path, ".");
+    assert(token != NULL);
+
+    token = strtok(NULL, " ");
+    assert(token != NULL);
+
+    return token;
 }
