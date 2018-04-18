@@ -138,11 +138,11 @@ int main(int argc, char *argv[]) {
             file_found = 1;
         }
 
+        // Get the content type
+        content_type = get_content_type(relative_path);
+
         // Send header accordingly, 200 for found file 404 otherwise
         if (file_found) {
-            // Get the content type
-            content_type = get_content_type(relative_path);
-
             len = sizeof(STATUS_OK) - 1;
             strcpy(send_buffer, STATUS_OK);
             n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
@@ -231,6 +231,52 @@ int main(int argc, char *argv[]) {
                 close(new_socket_descriptor);
                 close(socket_descriptor);
                 exit(1);
+            }
+
+            // Determine which content type to send
+            if (strcmp(content_type, "html") == 0) {
+                len = sizeof(MIME_HTML) - 1;
+                strcpy(send_buffer, MIME_HTML);
+                n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
+                if (n < 0) {
+                    perror("ERROR sending from socket");
+                    close(new_socket_descriptor);
+                    close(socket_descriptor);
+                    exit(1);
+                }
+            }
+            else if (strcmp(content_type, "css") == 0) {
+                len = sizeof(MIME_CSS) - 1;
+                strcpy(send_buffer, MIME_CSS);
+                n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
+                if (n < 0) {
+                    perror("ERROR sending from socket");
+                    close(new_socket_descriptor);
+                    close(socket_descriptor);
+                    exit(1);
+                }
+            }
+            else if (strcmp(content_type, "js") == 0) {
+                len = sizeof(MIME_JS) - 1;
+                strcpy(send_buffer, MIME_JS);
+                n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
+                if (n < 0) {
+                    perror("ERROR sending from socket");
+                    close(new_socket_descriptor);
+                    close(socket_descriptor);
+                    exit(1);
+                }
+            }
+            else {
+                len = sizeof(MIME_JPG) - 1;
+                strcpy(send_buffer, MIME_JPG);
+                n = sendall(new_socket_descriptor, send_buffer, &len);   // trim the nullbyte
+                if (n < 0) {
+                    perror("ERROR sending from socket");
+                    close(new_socket_descriptor);
+                    close(socket_descriptor);
+                    exit(1);
+                }
             }
 
             len = sizeof(CRLF) - 1;
@@ -382,7 +428,10 @@ char *get_content_type(char *relative_path) {
     assert(token != NULL);
 
     token = strtok(NULL, " ");
-    assert(token != NULL);
+    // Process to avoid segfault, no folder found (default content type = html)
+    if (token == NULL) {
+        return "html";
+    }
 
     return token;
 }
