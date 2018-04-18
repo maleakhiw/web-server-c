@@ -17,6 +17,9 @@
 #include <unistd.h>
 #include <pthread.h>
 
+/** TODO: Bug List */
+// - postman still persistent connection (being prioritised)
+
 /*****************************************************************************/
 
 /* Constant */
@@ -46,7 +49,6 @@ int sendall(int s, char *buf, int *len);
 
 /*****************************************************************************/
 
-//TODO: persistent connection postman
 /* Main Function */
 int main(int argc, char *argv[]) {
     int socket_descriptor, port_number, new_socket_descriptor;
@@ -100,10 +102,8 @@ int main(int argc, char *argv[]) {
 
         // Read client's request
         n = recv(new_socket_descriptor, receive_buffer, BUFFER_LENGTH-1, 0);
-        // printf("n:%d\n", n);
         receive_buffer[n] = '\0'; // Add null byte at the end
         printf("%s\n", receive_buffer);
-        // printf("receive_buffer_initialised:%p\n", receive_buffer);
         if (n < 0) {
             perror("ERROR receiving from socket");
             close(new_socket_descriptor);
@@ -233,52 +233,6 @@ int main(int argc, char *argv[]) {
                 exit(1);
             }
 
-            // // Determine which content type to send
-            // if (strcmp(content_type, "html") == 0) {
-            //     len = sizeof(MIME_HTML) - 1;
-            //     strcpy(send_buffer, MIME_HTML);
-            //     n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
-            //     if (n < 0) {
-            //         perror("ERROR sending from socket");
-            //         close(new_socket_descriptor);
-            //         close(socket_descriptor);
-            //         exit(1);
-            //     }
-            // }
-            // else if (strcmp(content_type, "css") == 0) {
-            //     len = sizeof(MIME_CSS) - 1;
-            //     strcpy(send_buffer, MIME_CSS);
-            //     n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
-            //     if (n < 0) {
-            //         perror("ERROR sending from socket");
-            //         close(new_socket_descriptor);
-            //         close(socket_descriptor);
-            //         exit(1);
-            //     }
-            // }
-            // else if (strcmp(content_type, "js") == 0) {
-            //     len = sizeof(MIME_JS) - 1;
-            //     strcpy(send_buffer, MIME_JS);
-            //     n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
-            //     if (n < 0) {
-            //         perror("ERROR sending from socket");
-            //         close(new_socket_descriptor);
-            //         close(socket_descriptor);
-            //         exit(1);
-            //     }
-            // }
-            // else {
-            //     len = sizeof(MIME_JPG) - 1;
-            //     strcpy(send_buffer, MIME_JPG);
-            //     n = sendall(new_socket_descriptor, send_buffer, &len);   // trim the nullbyte
-            //     if (n < 0) {
-            //         perror("ERROR sending from socket");
-            //         close(new_socket_descriptor);
-            //         close(socket_descriptor);
-            //         exit(1);
-            //     }
-            // }
-
             len = sizeof(CRLF) - 1;
             strcpy(send_buffer, CRLF);
             n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte, end of header
@@ -301,8 +255,6 @@ int main(int argc, char *argv[]) {
             relative_path = NULL;
             is_free = 0;
         }
-        // printf("receive_buffer_free:%p\n", receive_buffer);
-        // printf("Iteration finished\n");
 
         close(new_socket_descriptor);
     }
@@ -364,7 +316,7 @@ char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_soc
     char send_buffer[BUFFER_LENGTH];
     int n, len;
 
-    // Safety precaution for browser
+    // Safety precaution for persistent browser
     if (strlen(receive_buffer) == 0) {
         close(new_socket_descriptor);
         return NULL;
