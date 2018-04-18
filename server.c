@@ -87,13 +87,14 @@ int main(int argc, char *argv[]) {
     while(1) {
         // New socket descriptor will be used to send and receive later
         new_socket_descriptor = accept(socket_descriptor, (struct sockaddr *) &client_address, &client_address_len);
-
         // Check for ERROR
         if (new_socket_descriptor < 0) {
             perror("ERROR on accept");
             close(socket_descriptor);
             exit(1);
         }
+
+        /* TODO: After accept, create new socket and handle the process */
 
         /* Receive client request and process it */
         // Initialise receive buffer to BUFFER_LENGTH, but possible to realloc
