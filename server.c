@@ -19,6 +19,8 @@
 
 /** TODO: Bug List */
 // - postman still persistent connection (being prioritised)
+// - multithread
+// - makefile
 
 /*****************************************************************************/
 
@@ -29,6 +31,8 @@
 
 #define BACKLOG 10
 #define BUFFER_LENGTH 8000
+#define HEADER_PATTERN_START 4
+#define FINISH_READING_FLAG 2
 
 const char STATUS_OK[] = "HTTP/1.0 200 OK\r\n";
 const char STATUS_NOT_FOUND[] = "HTTP/1.0 404 Not Found\r\n";
@@ -51,13 +55,20 @@ int sendall(int s, char *buf, int *len);
 
 /* Main Function */
 int main(int argc, char *argv[]) {
+    /** Variable */
+    // Socket variable
     int socket_descriptor, port_number, new_socket_descriptor;
     char *receive_buffer, send_buffer[BUFFER_LENGTH];
     char *web_root_path, *relative_path, *full_path, *content_type;
     struct sockaddr_in server_address, client_address;
     socklen_t client_address_len;
 
-    int n, file_found, len;
+    // File variable
+    int i;
+    int empty_buffer_space;
+    int n, file_found, len, total_read;
+    int finish_reading = 0; // boolean
+    int receive_buffer_size = BUFFER_LENGTH;
     int is_free = 0;
     FILE *file_descriptor;
     size_t bytes_read = 0;
@@ -85,6 +96,11 @@ int main(int argc, char *argv[]) {
 
     // Continuously accept for every clients
     while(1) {
+        // Initialise for receiving purposes
+        total_read = 0;
+        finish_reading = 0;
+        receive_buffer_size = BUFFER_LENGTH;
+
         // New socket descriptor will be used to send and receive later
         new_socket_descriptor = accept(socket_descriptor, (struct sockaddr *) &client_address, &client_address_len);
         // Check for ERROR
@@ -94,22 +110,60 @@ int main(int argc, char *argv[]) {
             exit(1);
         }
 
-        /* TODO: After accept, create new socket and handle the process */
-
         /* Receive client request and process it */
         // Initialise receive buffer to BUFFER_LENGTH, but possible to realloc
-        receive_buffer = (char *) malloc(sizeof(char) * BUFFER_LENGTH);
+        receive_buffer = (char *) malloc(sizeof(char) * receive_buffer_size);
         assert(receive_buffer != NULL);
 
-        // Read client's request
-        n = recv(new_socket_descriptor, receive_buffer, BUFFER_LENGTH-1, 0);
-        receive_buffer[n] = '\0'; // Add null byte at the end
-        printf("%s\n", receive_buffer);
-        if (n < 0) {
-            perror("ERROR receiving from socket");
-            close(new_socket_descriptor);
-            close(socket_descriptor);
-            exit(1);
+        // Read all of client's request and break when everything readed
+        while (1) {
+            // Read from client
+            empty_buffer_space = receive_buffer_size - 1 - total_read;
+            n = recv(new_socket_descriptor, receive_buffer + total_read, empty_buffer_space, 0); // save space for nullbyte
+            // Client disconnected or error
+            if (n == 0) {
+                receive_buffer[total_read] = '\0';
+                break;
+            }
+            if (n < 0) {
+                perror("ERROR receiving from socket");
+                close(new_socket_descriptor);
+                close(socket_descriptor);
+                exit(1);
+            }
+            total_read += n;
+
+            // Check the last 4 element read, to see if it's the end of header (end of header = \r\n\r\n)
+            for (i = total_read - HEADER_PATTERN_START ; i < total_read; i++) {
+                // just to be safe count the number of subsequence new line
+                if (receive_buffer[i] == '\r') {
+                    // Ignore
+                }
+                // If see new line start to increment finis_reading flag
+                // When finish_reading flag = 2, header has been read
+                else if (receive_buffer[i] == '\n') {
+                    finish_reading++;
+                }
+                // If see other letter, reset the flag
+                else {
+                    finish_reading = 0;
+                }
+            }
+
+            // When finish_reading flag = 2, it means that everything has been read and so break from while loop
+            if (finish_reading == FINISH_READING_FLAG) {
+                receive_buffer[total_read] = '\0'; // append null byte at the end of reading header
+                break;
+            }
+            // If we haven't finish reading, then definitely need to realloc, as we need more space
+            else {
+                receive_buffer_size *= 2;
+                receive_buffer = realloc(receive_buffer, receive_buffer_size);
+            }
+        }
+        // Print to server log if there is item received
+        if (total_read) {
+            printf("%s\n", receive_buffer);
         }
 
         // Get the URI of the client request
@@ -388,7 +442,6 @@ char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_soc
 
     // Make sure that the first token is GET, if it is not then it's not valid request
     token = strtok(NULL, " ");
-    assert(token);
     // Safety precaution and making sure client is providing valid path
     if (token[0] != '/' || token == NULL) {
         len = sizeof(STATUS_BAD_REQUEST) - 1;
@@ -400,6 +453,7 @@ char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_soc
             close(new_socket_descriptor);
             exit(1);
         }
+        close(new_socket_descriptor);
         return NULL;
     }
 
