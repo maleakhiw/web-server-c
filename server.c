@@ -25,7 +25,7 @@
 #define WEB_ROOT_PATH_INDEX 2
 
 #define BACKLOG 10
-#define BUFFER_LENGTH 50
+#define BUFFER_LENGTH 8000
 
 const char STATUS_OK[] = "HTTP/1.0 200 OK\r\n";
 const char STATUS_NOT_FOUND[] = "HTTP/1.0 404 Not Found\r\n";
@@ -46,6 +46,7 @@ int sendall(int s, char *buf, int *len);
 
 /*****************************************************************************/
 
+//TODO: Segmentation fault due to recv = 0
 /* Main Function */
 int main(int argc, char *argv[]) {
     int socket_descriptor, port_number, new_socket_descriptor;
@@ -94,13 +95,15 @@ int main(int argc, char *argv[]) {
 
         /* Receive client request and process it */
         // Initialise receive buffer to BUFFER_LENGTH, but possible to realloc
-        receive_buffer = (char *) calloc(BUFFER_LENGTH, sizeof(char));
+        receive_buffer = (char *) malloc(sizeof(char) * BUFFER_LENGTH);
         assert(receive_buffer != NULL);
 
         // Read client's request
         n = recv(new_socket_descriptor, receive_buffer, BUFFER_LENGTH-1, 0);
+        // printf("n:%d\n", n);
         receive_buffer[n] = '\0'; // Add null byte at the end
         printf("%s\n", receive_buffer);
+        // printf("receive_buffer_initialised:%p\n", receive_buffer);
         if (n < 0) {
             perror("ERROR receiving from socket");
             close(new_socket_descriptor);
@@ -288,8 +291,6 @@ int main(int argc, char *argv[]) {
         }
 
         /* Close socket and free */
-        close(new_socket_descriptor);
-
         // free all malloc'd objects
         free(receive_buffer);
         receive_buffer = NULL;
@@ -300,6 +301,10 @@ int main(int argc, char *argv[]) {
             relative_path = NULL;
             is_free = 0;
         }
+        // printf("receive_buffer_free:%p\n", receive_buffer);
+        // printf("Iteration finished\n");
+
+        close(new_socket_descriptor);
     }
 
     close(socket_descriptor);
@@ -360,7 +365,10 @@ char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_soc
     int n, len;
 
     // Get the URI (second token), first token is not URI
+    // printf("receive_buffer_inside:%s\n", receive_buffer);
+    // printf("receive_buffer_address:%p\n", receive_buffer);
     token = strtok(receive_buffer, " ");
+    assert(token);
     // Safety precaution and making sure client is requesting GET
     if (strcmp(token, "GET") != 0 || token == NULL) {
         len = sizeof(STATUS_BAD_REQUEST) - 1;
@@ -378,6 +386,7 @@ char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_soc
 
     // Make sure that the first token is GET, if it is not then it's not valid request
     token = strtok(NULL, " ");
+    assert(token);
     // Safety precaution and making sure client is providing valid path
     if (token[0] != '/' || token == NULL) {
         len = sizeof(STATUS_BAD_REQUEST) - 1;
