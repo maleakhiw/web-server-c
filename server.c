@@ -25,16 +25,16 @@
 #define WEB_ROOT_PATH_INDEX 2
 
 #define BACKLOG 10
-#define BUFFER_LENGTH 8000
+#define BUFFER_LENGTH 50
 
 const char STATUS_OK[] = "HTTP/1.0 200 OK\r\n";
 const char STATUS_NOT_FOUND[] = "HTTP/1.0 404 Not Found\r\n";
 const char STATUS_BAD_REQUEST[] = "HTTP/1.0 400 Bad Request\r\n";
 
 const char MIME_HTML[] = "Content-Type: text/html\r\n";
-const char MIME_JPG[] = "Content-Type: image/jpg\r\n";
+const char MIME_JPG[] = "Content-Type: image/jpeg\r\n";
 const char MIME_CSS[] = "Content-Type: text/css\r\n";
-const char MIME_JS[] = "Content-Type: text/javascript\r\n";
+const char MIME_JS[] = "Content-Type: application/javascript\r\n";
 
 const char CRLF[] = "\r\n";
 
@@ -42,6 +42,7 @@ const char CRLF[] = "\r\n";
 char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_socket_descriptor, int *is_free);
 int setup_server(struct sockaddr_in *server_address, int port_number);
 char *get_content_type(char *relative_path);
+int sendall(int s, char *buf, int *len);
 
 /*****************************************************************************/
 
@@ -53,7 +54,7 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in server_address, client_address;
     socklen_t client_address_len;
 
-    int n, file_found;
+    int n, file_found, len;
     int is_free = 0;
     FILE *file_descriptor;
     size_t bytes_read = 0;
@@ -139,7 +140,9 @@ int main(int argc, char *argv[]) {
 
         // Send header accordingly, 200 for found file 404 otherwise
         if (file_found) {
-            n = send(new_socket_descriptor, STATUS_OK, sizeof(STATUS_OK)-1, 0); // trim the nullbyte
+            len = sizeof(STATUS_OK) - 1;
+            strcpy(send_buffer, STATUS_OK);
+            n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
             if (n < 0) {
                 perror("ERROR sending from socket");
                 close(new_socket_descriptor);
@@ -149,7 +152,9 @@ int main(int argc, char *argv[]) {
 
             // Determine which content type to send
             if (strcmp(content_type, "html") == 0) {
-                n = send(new_socket_descriptor, MIME_HTML, sizeof(MIME_HTML)-1, 0); // trim the nullbyte
+                len = sizeof(MIME_HTML) - 1;
+                strcpy(send_buffer, MIME_HTML);
+                n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
                 if (n < 0) {
                     perror("ERROR sending from socket");
                     close(new_socket_descriptor);
@@ -158,7 +163,9 @@ int main(int argc, char *argv[]) {
                 }
             }
             else if (strcmp(content_type, "css") == 0) {
-                n = send(new_socket_descriptor, MIME_CSS, sizeof(MIME_CSS)-1, 0); // trim the nullbyte
+                len = sizeof(MIME_CSS) - 1;
+                strcpy(send_buffer, MIME_CSS);
+                n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
                 if (n < 0) {
                     perror("ERROR sending from socket");
                     close(new_socket_descriptor);
@@ -167,7 +174,9 @@ int main(int argc, char *argv[]) {
                 }
             }
             else if (strcmp(content_type, "js") == 0) {
-                n = send(new_socket_descriptor, MIME_JS, sizeof(MIME_JS)-1, 0); // trim the nullbyte
+                len = sizeof(MIME_JS) - 1;
+                strcpy(send_buffer, MIME_JS);
+                n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
                 if (n < 0) {
                     perror("ERROR sending from socket");
                     close(new_socket_descriptor);
@@ -176,7 +185,9 @@ int main(int argc, char *argv[]) {
                 }
             }
             else {
-                n = send(new_socket_descriptor, MIME_JPG, sizeof(MIME_JPG)-1, 0);   // trim the nullbyte
+                len = sizeof(MIME_JPG) - 1;
+                strcpy(send_buffer, MIME_JPG);
+                n = sendall(new_socket_descriptor, send_buffer, &len);   // trim the nullbyte
                 if (n < 0) {
                     perror("ERROR sending from socket");
                     close(new_socket_descriptor);
@@ -185,7 +196,9 @@ int main(int argc, char *argv[]) {
                 }
             }
 
-            n = send(new_socket_descriptor, CRLF, sizeof(CRLF)-1, 0); // trim the nullbyte, end of header
+            len = sizeof(CRLF) - 1;
+            strcpy(send_buffer, CRLF);
+            n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte, end of header
             if (n < 0) {
                 perror("ERROR sending from socket");
                 close(new_socket_descriptor);
@@ -195,7 +208,8 @@ int main(int argc, char *argv[]) {
 
             // read file in chunks
             while ((bytes_read = fread(send_buffer, sizeof(char), sizeof(send_buffer), file_descriptor))) {
-                n = send(new_socket_descriptor, send_buffer, bytes_read, 0);
+                len = bytes_read;
+                n = sendall(new_socket_descriptor, send_buffer, &len);
                 if (n < 0) {
                     perror("ERROR sending from socket");
                     close(new_socket_descriptor);
@@ -206,7 +220,9 @@ int main(int argc, char *argv[]) {
 
         }
         else {
-            n = send(new_socket_descriptor, STATUS_NOT_FOUND, sizeof(STATUS_NOT_FOUND), 0);
+            len = sizeof(STATUS_NOT_FOUND) - 1;
+            strcpy(send_buffer, STATUS_NOT_FOUND);
+            n = sendall(new_socket_descriptor, send_buffer, &len);
             if (n < 0) {
                 perror("ERROR sending from socket");
                 close(new_socket_descriptor);
@@ -216,7 +232,9 @@ int main(int argc, char *argv[]) {
 
             // Determine which content type to send
             if (strcmp(content_type, "html") == 0) {
-                n = send(new_socket_descriptor, MIME_HTML, sizeof(MIME_HTML)-1, 0); // trim the nullbyte
+                len = sizeof(MIME_HTML) - 1;
+                strcpy(send_buffer, MIME_HTML);
+                n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
                 if (n < 0) {
                     perror("ERROR sending from socket");
                     close(new_socket_descriptor);
@@ -225,7 +243,9 @@ int main(int argc, char *argv[]) {
                 }
             }
             else if (strcmp(content_type, "css") == 0) {
-                n = send(new_socket_descriptor, MIME_CSS, sizeof(MIME_CSS)-1, 0); // trim the nullbyte
+                len = sizeof(MIME_CSS) - 1;
+                strcpy(send_buffer, MIME_CSS);
+                n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
                 if (n < 0) {
                     perror("ERROR sending from socket");
                     close(new_socket_descriptor);
@@ -234,7 +254,9 @@ int main(int argc, char *argv[]) {
                 }
             }
             else if (strcmp(content_type, "js") == 0) {
-                n = send(new_socket_descriptor, MIME_JS, sizeof(MIME_JS)-1, 0); // trim the nullbyte
+                len = sizeof(MIME_JS) - 1;
+                strcpy(send_buffer, MIME_JS);
+                n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
                 if (n < 0) {
                     perror("ERROR sending from socket");
                     close(new_socket_descriptor);
@@ -243,7 +265,9 @@ int main(int argc, char *argv[]) {
                 }
             }
             else {
-                n = send(new_socket_descriptor, MIME_JPG, sizeof(MIME_JPG)-1, 0); // trim the nullbyte
+                len = sizeof(MIME_JPG) - 1;
+                strcpy(send_buffer, MIME_JPG);
+                n = sendall(new_socket_descriptor, send_buffer, &len);   // trim the nullbyte
                 if (n < 0) {
                     perror("ERROR sending from socket");
                     close(new_socket_descriptor);
@@ -252,7 +276,9 @@ int main(int argc, char *argv[]) {
                 }
             }
 
-            n = send(new_socket_descriptor, CRLF, sizeof(CRLF)-1, 0); // trim the nullbyte, end of header
+            len = sizeof(CRLF) - 1;
+            strcpy(send_buffer, CRLF);
+            n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte, end of header
             if (n < 0) {
                 perror("ERROR sending from socket");
                 close(new_socket_descriptor);
@@ -330,13 +356,16 @@ int setup_server(struct sockaddr_in *server_address, int port_number) {
 char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_socket_descriptor, int *is_free) {
     char *token;
     char *default_token;
-    int n;
+    char send_buffer[BUFFER_LENGTH];
+    int n, len;
 
     // Get the URI (second token), first token is not URI
     token = strtok(receive_buffer, " ");
     // Safety precaution and making sure client is requesting GET
     if (strcmp(token, "GET") != 0 || token == NULL) {
-        n = send(new_socket_descriptor, STATUS_BAD_REQUEST, sizeof(STATUS_BAD_REQUEST)-1, 0); // trim nullbyte
+        len = sizeof(STATUS_BAD_REQUEST) - 1;
+        strcpy(send_buffer, STATUS_BAD_REQUEST);
+        n = sendall(new_socket_descriptor, send_buffer, &len); // trim nullbyte
         if (n < 0) {
             perror("ERROR sending from socket");
             close(new_socket_descriptor);
@@ -351,7 +380,9 @@ char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_soc
     token = strtok(NULL, " ");
     // Safety precaution and making sure client is providing valid path
     if (token[0] != '/' || token == NULL) {
-        n = send(new_socket_descriptor, STATUS_BAD_REQUEST, sizeof(STATUS_BAD_REQUEST)-1, 0); // trim nullbyte
+        len = sizeof(STATUS_BAD_REQUEST) - 1;
+        strcpy(send_buffer, STATUS_BAD_REQUEST);
+        n = sendall(new_socket_descriptor, send_buffer, &len); // trim nullbyte
         if (n < 0) {
             perror("ERROR sending from socket");
             close(socket_descriptor);
@@ -390,4 +421,28 @@ char *get_content_type(char *relative_path) {
     assert(token != NULL);
 
     return token;
+}
+
+/**
+ * Used to handle partial send(). Adapted from Beejs guide
+ * @param s: socket identifier
+ * @param buf: buffer containing the data
+ * @param len: pointer to an int containing number of bytes in buffer
+ * @return -1 on error, 0 on success
+ */
+int sendall(int s, char *buf, int *len) {
+    int total = 0;        // how many bytes we've sent
+    int bytesleft = *len; // how many we have left to send
+    int n;
+
+    while(total < *len) {
+        n = send(s, buf+total, bytesleft, 0);
+        if (n == -1) { break; }
+        total += n;
+        bytesleft -= n;
+    }
+
+    *len = total; // return number actually sent here
+
+    return n==-1?-1:0; // return -1 on failure, 0 on success
 }
