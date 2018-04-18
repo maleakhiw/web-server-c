@@ -23,31 +23,25 @@
 #define ARGUMENT 3
 #define PORT_INDEX 1
 #define WEB_ROOT_PATH_INDEX 2
+
 #define BACKLOG 10
-#define BUFFER_LENGTH 2000
-
-/* Declaration */
-char *get_relative_path(char *receive_buffer);
-int setup_server(struct sockaddr_in *server_address, int port_number);
-char *get_content_type(char *relative_path);
-
-// // Example of data send back by the server
-// char webpage[] =
-// "\r\n<!DOCTYPE html>\r\n"
-// "<html><head><title>ShellWaveX</title>\r\n"
-// "<style> body {background-color: #FFFF00} </style></head> \r\n"
-// "<body><center><h1>Hello World!</h1></center></body></html>\r\n";
+#define BUFFER_LENGTH 8000
 
 const char STATUS_OK[] = "HTTP/1.0 200 OK\r\n";
 const char STATUS_NOT_FOUND[] = "HTTP/1.0 404 Not Found\r\n";
+const char STATUS_BAD_REQUEST[] = "HTTP/1.0 400 Bad Request\r\n";
 
 const char MIME_HTML[] = "Content-Type: text/html\r\n";
-const char MIME_JPEG[] = "Content-Type: image/jpeg\r\n";
+const char MIME_JPG[] = "Content-Type: image/jpg\r\n";
 const char MIME_CSS[] = "Content-Type: text/css\r\n";
 const char MIME_JS[] = "Content-Type: text/javascript\r\n";
 
 const char CRLF[] = "\r\n";
 
+/* Declaration */
+char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_socket_descriptor, int *is_free);
+int setup_server(struct sockaddr_in *server_address, int port_number);
+char *get_content_type(char *relative_path);
 
 /*****************************************************************************/
 
@@ -58,8 +52,11 @@ int main(int argc, char *argv[]) {
     char *web_root_path, *relative_path, *full_path, *content_type;
     struct sockaddr_in server_address, client_address;
     socklen_t client_address_len;
-    int n, status;
+
+    int n, file_found;
+    int is_free = 0;
     FILE *file_descriptor;
+    size_t bytes_read = 0;
 
     /* Initialisation */
     // Check that argument to command line is sufficient
@@ -75,10 +72,6 @@ int main(int argc, char *argv[]) {
     // Initialise address, buffers
     memset(&server_address, 0, sizeof(server_address));
     memset(send_buffer, 0, BUFFER_LENGTH);
-
-    // Initialise receive buffer to BUFFER_LENGTH, but possible to realloc
-    receive_buffer = (char *) calloc(BUFFER_LENGTH, sizeof(char));
-    assert(receive_buffer != NULL);
 
     /* Setup server */
     socket_descriptor = setup_server(&server_address, port_number);
@@ -99,6 +92,10 @@ int main(int argc, char *argv[]) {
         }
 
         /* Receive client request and process it */
+        // Initialise receive buffer to BUFFER_LENGTH, but possible to realloc
+        receive_buffer = (char *) calloc(BUFFER_LENGTH, sizeof(char));
+        assert(receive_buffer != NULL);
+
         // Read client's request
         n = recv(new_socket_descriptor, receive_buffer, BUFFER_LENGTH-1, 0);
         receive_buffer[n] = '\0'; // Add null byte at the end
@@ -111,79 +108,172 @@ int main(int argc, char *argv[]) {
         }
 
         // Get the URI of the client request
-        relative_path = get_relative_path(receive_buffer);
+        relative_path = get_relative_path(receive_buffer, socket_descriptor, new_socket_descriptor, &is_free);
+        // If client request is invalid, close connection and do not continue process it
+        if (relative_path == NULL) {
+            free(receive_buffer);
+            receive_buffer = NULL;
+            continue;
+        }
 
         // Combine to get full path
         full_path = (char *) malloc((strlen(relative_path) + strlen(web_root_path) + 1) * sizeof(char));
         assert(full_path != NULL);
         strcpy(full_path, web_root_path);
         strcat(full_path, relative_path);
-        printf("full_path: %s \n", full_path);
-        printf("relative_path: %s\n", relative_path);
 
         // Get the content type
         content_type = get_content_type(relative_path);
-        printf("Content type: %s\n", content_type);
-        printf("full_path: %s \n", full_path);
 
         /* Send response to client */
         // Try to open the file requested by client
         file_descriptor = fopen(full_path, "r");
-        if (file_descriptor == NULL) {  // file not found
-            status = 0;
-            // fprintf(stderr, "ERROR opening file");
+        // File not found
+        if (file_descriptor == NULL) {
+            file_found = 0;
         }
-        else {  // file exists
-            status = 1;
+        // File exist
+        else {
+            file_found = 1;
         }
 
-        // header = build_header(status, content_type);
-        // n = send(new_socket_descriptor, header, sizeof(header) - 1, 0);
-        if (status == 1) {
-            n = send(new_socket_descriptor, STATUS_OK, sizeof(STATUS_OK) - 1, 0);   // trim the nullbyte
-            printf("SENT> %s\n", STATUS_OK);
-            // n = send(new_socket_descriptor, webpage, sizeof(webpage), 0);
-
-            if (strcmp(content_type, "html") == 0) {
-                n = send(new_socket_descriptor, MIME_HTML, sizeof(MIME_HTML) - 1, 0);   // trim the nullbyte
-                printf("SENT> %s\n", MIME_HTML);
+        // Send header accordingly, 200 for found file 404 otherwise
+        if (file_found) {
+            n = send(new_socket_descriptor, STATUS_OK, sizeof(STATUS_OK)-1, 0); // trim the nullbyte
+            if (n < 0) {
+                perror("ERROR sending from socket");
+                close(new_socket_descriptor);
+                close(socket_descriptor);
+                exit(1);
             }
 
-            n = send(new_socket_descriptor, CRLF, sizeof(CRLF) - 1, 0); // trim the nullbyte
-            printf("SENT> %s\n", CRLF);
+            // Determine which content type to send
+            if (strcmp(content_type, "html") == 0) {
+                n = send(new_socket_descriptor, MIME_HTML, sizeof(MIME_HTML)-1, 0); // trim the nullbyte
+                if (n < 0) {
+                    perror("ERROR sending from socket");
+                    close(new_socket_descriptor);
+                    close(socket_descriptor);
+                    exit(1);
+                }
+            }
+            else if (strcmp(content_type, "css") == 0) {
+                n = send(new_socket_descriptor, MIME_CSS, sizeof(MIME_CSS)-1, 0); // trim the nullbyte
+                if (n < 0) {
+                    perror("ERROR sending from socket");
+                    close(new_socket_descriptor);
+                    close(socket_descriptor);
+                    exit(1);
+                }
+            }
+            else if (strcmp(content_type, "js") == 0) {
+                n = send(new_socket_descriptor, MIME_JS, sizeof(MIME_JS)-1, 0); // trim the nullbyte
+                if (n < 0) {
+                    perror("ERROR sending from socket");
+                    close(new_socket_descriptor);
+                    close(socket_descriptor);
+                    exit(1);
+                }
+            }
+            else {
+                n = send(new_socket_descriptor, MIME_JPG, sizeof(MIME_JPG)-1, 0);   // trim the nullbyte
+                if (n < 0) {
+                    perror("ERROR sending from socket");
+                    close(new_socket_descriptor);
+                    close(socket_descriptor);
+                    exit(1);
+                }
+            }
 
+            n = send(new_socket_descriptor, CRLF, sizeof(CRLF)-1, 0); // trim the nullbyte, end of header
+            if (n < 0) {
+                perror("ERROR sending from socket");
+                close(new_socket_descriptor);
+                close(socket_descriptor);
+                exit(1);
+            }
 
-            size_t bytesRead = 0;
             // read file in chunks
-            while ((bytesRead = fread(send_buffer, 1, sizeof(send_buffer), file_descriptor))) {
-                n = send(new_socket_descriptor, send_buffer, bytesRead, 0);
-                printf("SENT> %s\n", send_buffer);
-
-                // TODO check for ERROR (n == -1)
+            while ((bytes_read = fread(send_buffer, sizeof(char), sizeof(send_buffer), file_descriptor))) {
+                n = send(new_socket_descriptor, send_buffer, bytes_read, 0);
+                if (n < 0) {
+                    perror("ERROR sending from socket");
+                    close(new_socket_descriptor);
+                    close(socket_descriptor);
+                    exit(1);
+                }
             }
 
         }
         else {
             n = send(new_socket_descriptor, STATUS_NOT_FOUND, sizeof(STATUS_NOT_FOUND), 0);
+            if (n < 0) {
+                perror("ERROR sending from socket");
+                close(new_socket_descriptor);
+                close(socket_descriptor);
+                exit(1);
+            }
+
+            // Determine which content type to send
+            if (strcmp(content_type, "html") == 0) {
+                n = send(new_socket_descriptor, MIME_HTML, sizeof(MIME_HTML)-1, 0); // trim the nullbyte
+                if (n < 0) {
+                    perror("ERROR sending from socket");
+                    close(new_socket_descriptor);
+                    close(socket_descriptor);
+                    exit(1);
+                }
+            }
+            else if (strcmp(content_type, "css") == 0) {
+                n = send(new_socket_descriptor, MIME_CSS, sizeof(MIME_CSS)-1, 0); // trim the nullbyte
+                if (n < 0) {
+                    perror("ERROR sending from socket");
+                    close(new_socket_descriptor);
+                    close(socket_descriptor);
+                    exit(1);
+                }
+            }
+            else if (strcmp(content_type, "js") == 0) {
+                n = send(new_socket_descriptor, MIME_JS, sizeof(MIME_JS)-1, 0); // trim the nullbyte
+                if (n < 0) {
+                    perror("ERROR sending from socket");
+                    close(new_socket_descriptor);
+                    close(socket_descriptor);
+                    exit(1);
+                }
+            }
+            else {
+                n = send(new_socket_descriptor, MIME_JPG, sizeof(MIME_JPG)-1, 0); // trim the nullbyte
+                if (n < 0) {
+                    perror("ERROR sending from socket");
+                    close(new_socket_descriptor);
+                    close(socket_descriptor);
+                    exit(1);
+                }
+            }
+
+            n = send(new_socket_descriptor, CRLF, sizeof(CRLF)-1, 0); // trim the nullbyte, end of header
+            if (n < 0) {
+                perror("ERROR sending from socket");
+                close(new_socket_descriptor);
+                close(socket_descriptor);
+                exit(1);
+            }
         }
 
-        // TODO Check for ERROR
-        // if (n < 0) {
-        //     perror("ERROR sending from socket");
-        //     close(new_socket_descriptor);
-        //     close(socket_descriptor);
-        //     exit(1);
-        // }
-
-
-
-
-
-        /* Close socket */
+        /* Close socket and free */
         close(new_socket_descriptor);
 
         // free all malloc'd objects
+        free(receive_buffer);
+        receive_buffer = NULL;
         free(full_path);
+        full_path = NULL;
+        if (is_free) {
+            free(relative_path);
+            relative_path = NULL;
+            is_free = 0;
+        }
     }
 
     close(socket_descriptor);
@@ -232,30 +322,43 @@ int setup_server(struct sockaddr_in *server_address, int port_number) {
 /*
  * Get relative path from the receiver buffer
  * @param receive_buffer: buffer containing the client request
+ * @param socket_descriptor: used for closing
+ * @param new_socket_descriptor: used to send message if client do something wrong
+ * @param is_free: used to check whether token should be free
  * @return relative_path: relative path of the file that user requested
  */
-char *get_relative_path(char *receive_buffer) {
+char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_socket_descriptor, int *is_free) {
     char *token;
     char *default_token;
+    int n;
 
     // Get the URI (second token), first token is not URI
     token = strtok(receive_buffer, " ");
-
     // Safety precaution and making sure client is requesting GET
-    assert(token != NULL);
-    if (strcmp(token, "GET") != 0) {
-        fprintf(stderr, "Client request format is not GET\n");
-        exit(1);
+    if (strcmp(token, "GET") != 0 || token == NULL) {
+        n = send(new_socket_descriptor, STATUS_BAD_REQUEST, sizeof(STATUS_BAD_REQUEST)-1, 0); // trim nullbyte
+        if (n < 0) {
+            perror("ERROR sending from socket");
+            close(new_socket_descriptor);
+            close(socket_descriptor);
+            exit(1);
+        }
+        close(new_socket_descriptor);
+        return NULL;
     }
 
     // Make sure that the first token is GET, if it is not then it's not valid request
     token = strtok(NULL, " ");
-
     // Safety precaution and making sure client is providing valid path
-    assert(token != NULL);
-    if (token[0] != '/') {
-        fprintf(stderr, "Client URI request path format inappropriate\n");
-        exit(1);
+    if (token[0] != '/' || token == NULL) {
+        n = send(new_socket_descriptor, STATUS_BAD_REQUEST, sizeof(STATUS_BAD_REQUEST)-1, 0); // trim nullbyte
+        if (n < 0) {
+            perror("ERROR sending from socket");
+            close(socket_descriptor);
+            close(new_socket_descriptor);
+            exit(1);
+        }
+        return NULL;
     }
 
     // By default / will return index.html
@@ -264,6 +367,7 @@ char *get_relative_path(char *receive_buffer) {
         assert(default_token != NULL);
         strcpy(default_token, token);
         strcat(default_token, "index.html");
+        *is_free = 1; // later default_token will be freed
 
         return default_token;
     }
