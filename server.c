@@ -17,9 +17,6 @@
 #include <unistd.h>
 #include <pthread.h>
 
-/** TODO: Bug List */
-// - multithread
-
 /*****************************************************************************/
 
 /* Constant */
@@ -28,7 +25,7 @@
 #define WEB_ROOT_PATH_INDEX 2
 
 #define BACKLOG 10
-#define BUFFER_LENGTH 2000
+#define BUFFER_LENGTH 8000
 #define HEADER_PATTERN_START 4
 #define FINISH_READING_FLAG 2
 
@@ -43,14 +40,17 @@ const char MIME_JS[] = "Content-Type: application/javascript\r\n";
 
 const char CRLF[] = "\r\n";
 const char BODY_NOT_FOUND[] =
-"<!DOCTYPE html>\r\n<html><head><title>404 Not Found</title></head>\r\n<body><center><h1>404 Not Found</h1></center></body></html>\r\n";
+"<!DOCTYPE html>\r\n<html><head><title>404 Not Found</title></head>\r\n\
+<body><center><h1>404 Not Found</h1></center></body></html>\r\n";
 
 /* Declaration */
-char *get_relative_path(char *receive_buffer, int socket_descriptor, int connection_descriptor, int *is_free);
+char *get_relative_path(char *receive_buffer, int socket_descriptor,
+    int connection_descriptor, int *is_free);
 int setup_server(struct sockaddr_in *server_address, int port_number);
 char *get_content_type(char *relative_path);
 int sendall(int s, char *buf, int *len);
- void *process_request(void *new_socket_descriptor_pointer);
+void *process_request(void *connection_descriptor_pointer);
+void handle_multithread(int connection_descriptor);
 
 /* Global variable */
 char *web_root_path;
@@ -69,7 +69,8 @@ int main(int argc, char *argv[]) {
     /* Initialisation */
     // Check that argument to command line is sufficient
     if (argc != ARGUMENT) {
-        fprintf(stderr, "Please provide the correct command: ./server [port number] [path to web root]\n");
+        fprintf(stderr, "Please provide the correct command: \
+        ./server [port number] [path to web root]\n");
         exit(1);
     }
 
@@ -98,7 +99,7 @@ int main(int argc, char *argv[]) {
         }
 
         // Multithreaded processing
-        process_request(&connection_descriptor);
+        handle_multithread(connection_descriptor);
     }
 
     close(socket_descriptor);
@@ -257,11 +258,11 @@ int sendall(int s, char *buf, int *len) {
 
 /**
  * Process client's request and response after accepting connection
- * @param new_socket_descriptor_pointer: address of (void*) connection_descriptor,
+ * @param connection_descriptor_pointer: address of (void*) connection_descriptor,
  * need to match the param and return for multithreading
  * @return NULL (nothing)
  */
- void *process_request(void *new_socket_descriptor_pointer) {
+ void *process_request(void *connection_descriptor_pointer) {
     char *receive_buffer, send_buffer[BUFFER_LENGTH];
     int connection_descriptor;
     int finish_reading, receive_buffer_size;
@@ -280,11 +281,11 @@ int sendall(int s, char *buf, int *len) {
     memset(send_buffer, 0, BUFFER_LENGTH);
 
     // Check validity of pointer
-    if (new_socket_descriptor_pointer == NULL) {
+    if (connection_descriptor_pointer == NULL) {
         return NULL;
     }
     else {
-        connection_descriptor = *((int *)new_socket_descriptor_pointer);
+        connection_descriptor = *((int *)connection_descriptor_pointer);
     }
 
     /* Receive client request and process it */
@@ -509,13 +510,35 @@ int sendall(int s, char *buf, int *len) {
         relative_path = NULL;
         is_free = 0;
     }
-
+    free(connection_descriptor_pointer);
+    connection_descriptor_pointer = NULL;
     close(connection_descriptor);
     return NULL;
  }
 
 /**
+ * Create worker thread after dispatcher thread accept connection
+ * @param connection_descriptor: socket descriptor after accepting
  */
- // void handle_multithread(int connection_descriptor) {
- //
- // }
+ void handle_multithread(int connection_descriptor) {
+     pthread_t thread;
+     pthread_attr_t attr;
+     int creation_status;
+     int *connection_descriptor_pointer;
+
+     // Set initial attribute and since we don't want to join the thread,
+     // set it to detach
+     pthread_attr_init(&attr);
+     pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+
+     // Pointer for connection descriptor, to avoid corruption by the system
+     connection_descriptor_pointer = (int *) malloc(sizeof(int));
+     *connection_descriptor_pointer = connection_descriptor;
+
+     // Create the thread and process error
+     creation_status = pthread_create(&thread, &attr, process_request, connection_descriptor_pointer);
+     // Process error
+     if (creation_status != 0) {
+         fprintf(stderr, "Error creating thread");
+     }
+}
