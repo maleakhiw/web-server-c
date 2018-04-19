@@ -50,6 +50,8 @@ void *process_request(void *connection_descriptor_pointer);
 void handle_multithread(int connection_descriptor);
 int receive_all(char *receive_buffer, int *receive_buffer_size,
     int connection_descriptor);
+void send_http_success(char send_buffer[], char *content_type,
+    int connection_descriptor);
 
 /** Global variable */
 char *web_root_path;
@@ -324,7 +326,7 @@ int sendall(int s, char *buf, int *len) {
     strcpy(full_path, web_root_path);
     strcat(full_path, relative_path);
 
-    /* Send response to client */
+    /** Send response to client */
     // Try to open the file requested by client
     file_descriptor = fopen(full_path, "r");
     // File not found
@@ -341,73 +343,9 @@ int sendall(int s, char *buf, int *len) {
 
     // Send header accordingly, 200 for found file 404 otherwise
     if (file_found) {
-        len = sizeof(STATUS_OK) - 1;
-        strcpy(send_buffer, STATUS_OK);
-        n = sendall(connection_descriptor, send_buffer, &len);
-        if (n < 0) {
-            perror("ERROR sending from socket");
-            close(connection_descriptor);
-            close(socket_descriptor);
-            exit(EXIT_FAILURE);
-        }
+        send_http_success(send_buffer, content_type, connection_descriptor);
 
-        // Determine which content type to send
-        if (strcmp(content_type, "jpg") == 0) {
-            len = sizeof(MIME_JPG) - 1;
-            strcpy(send_buffer, MIME_JPG);
-            n = sendall(connection_descriptor, send_buffer, &len);
-            if (n < 0) {
-                perror("ERROR sending from socket");
-                close(connection_descriptor);
-                close(socket_descriptor);
-                exit(EXIT_FAILURE);
-            }
-        }
-        else if (strcmp(content_type, "css") == 0) {
-            len = sizeof(MIME_CSS) - 1;
-            strcpy(send_buffer, MIME_CSS);
-            n = sendall(connection_descriptor, send_buffer, &len);
-            if (n < 0) {
-                perror("ERROR sending from socket");
-                close(connection_descriptor);
-                close(socket_descriptor);
-                exit(EXIT_FAILURE);
-            }
-        }
-        else if (strcmp(content_type, "js") == 0) {
-            len = sizeof(MIME_JS) - 1;
-            strcpy(send_buffer, MIME_JS);
-            n = sendall(connection_descriptor, send_buffer, &len);
-            if (n < 0) {
-                perror("ERROR sending from socket");
-                close(connection_descriptor);
-                close(socket_descriptor);
-                exit(EXIT_FAILURE);
-            }
-        }
-        else {
-            len = sizeof(MIME_HTML) - 1;
-            strcpy(send_buffer, MIME_HTML);
-            n = sendall(connection_descriptor, send_buffer, &len);
-            if (n < 0) {
-                perror("ERROR sending from socket");
-                close(connection_descriptor);
-                close(socket_descriptor);
-                exit(EXIT_FAILURE);
-            }
-        }
-
-        len = sizeof(CRLF) - 1;
-        strcpy(send_buffer, CRLF);
-        n = sendall(connection_descriptor, send_buffer, &len);
-        if (n < 0) {
-            perror("ERROR sending from socket");
-            close(connection_descriptor);
-            close(socket_descriptor);
-            exit(EXIT_FAILURE);
-        }
-
-        // read file in chunks
+        // read file in chunks (send body)
         while ((bytes_read = fread(send_buffer, sizeof(char),
         sizeof(send_buffer), file_descriptor))) {
             len = bytes_read;
@@ -512,7 +450,10 @@ int sendall(int s, char *buf, int *len) {
 
 /**
  * Receive all client's request header
- *
+ * @param receive_buffer: buffer used to store client's request
+ * @param receive_buffer_size: address of the size
+ * @param connection_descriptor: used to receive
+ * @param bytes reads
  */
 int receive_all(char *receive_buffer, int *receive_buffer_size,
     int connection_descriptor) {
@@ -573,4 +514,78 @@ int receive_all(char *receive_buffer, int *receive_buffer_size,
         }
     }
     return total_read;
+}
+
+/**
+ * Send successfully header
+ */
+void send_http_success(char send_buffer[], char *content_type,
+    int connection_descriptor) {
+    int len, n;
+
+    len = sizeof(STATUS_OK) - 1;
+    strcpy(send_buffer, STATUS_OK);
+    n = sendall(connection_descriptor, send_buffer, &len);
+    if (n < 0) {
+        perror("ERROR sending from socket");
+        close(connection_descriptor);
+        close(socket_descriptor);
+        exit(EXIT_FAILURE);
+    }
+
+    // Determine which content type to send
+    if (strcmp(content_type, "jpg") == 0) {
+        len = sizeof(MIME_JPG) - 1;
+        strcpy(send_buffer, MIME_JPG);
+        n = sendall(connection_descriptor, send_buffer, &len);
+        if (n < 0) {
+            perror("ERROR sending from socket");
+            close(connection_descriptor);
+            close(socket_descriptor);
+            exit(EXIT_FAILURE);
+        }
+    }
+    else if (strcmp(content_type, "css") == 0) {
+        len = sizeof(MIME_CSS) - 1;
+        strcpy(send_buffer, MIME_CSS);
+        n = sendall(connection_descriptor, send_buffer, &len);
+        if (n < 0) {
+            perror("ERROR sending from socket");
+            close(connection_descriptor);
+            close(socket_descriptor);
+            exit(EXIT_FAILURE);
+        }
+    }
+    else if (strcmp(content_type, "js") == 0) {
+        len = sizeof(MIME_JS) - 1;
+        strcpy(send_buffer, MIME_JS);
+        n = sendall(connection_descriptor, send_buffer, &len);
+        if (n < 0) {
+            perror("ERROR sending from socket");
+            close(connection_descriptor);
+            close(socket_descriptor);
+            exit(EXIT_FAILURE);
+        }
+    }
+    else {
+        len = sizeof(MIME_HTML) - 1;
+        strcpy(send_buffer, MIME_HTML);
+        n = sendall(connection_descriptor, send_buffer, &len);
+        if (n < 0) {
+            perror("ERROR sending from socket");
+            close(connection_descriptor);
+            close(socket_descriptor);
+            exit(EXIT_FAILURE);
+        }
+    }
+
+    len = sizeof(CRLF) - 1;
+    strcpy(send_buffer, CRLF);
+    n = sendall(connection_descriptor, send_buffer, &len);
+    if (n < 0) {
+        perror("ERROR sending from socket");
+        close(connection_descriptor);
+        close(socket_descriptor);
+        exit(EXIT_FAILURE);
+    }
 }
