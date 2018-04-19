@@ -48,6 +48,8 @@ char *get_content_type(char *relative_path);
 int sendall(int s, char *buf, int *len);
 void *process_request(void *connection_descriptor_pointer);
 void handle_multithread(int connection_descriptor);
+int receive_all(char *receive_buffer, int *receive_buffer_size,
+    int connection_descriptor);
 
 /** Global variable */
 char *web_root_path;
@@ -276,14 +278,13 @@ int sendall(int s, char *buf, int *len) {
     int connection_descriptor;
     char *receive_buffer, send_buffer[BUFFER_LENGTH];
     char *relative_path, *full_path, *content_type;
-    int finish_reading, receive_buffer_size, i, empty_buffer_space;
+    int receive_buffer_size;
     int n, file_found, len, total_read, is_free;
     size_t bytes_read = 0;
     FILE *file_descriptor;
 
     // Initialise for receiving purposes
     total_read = 0;
-    finish_reading = 0;
     receive_buffer_size = BUFFER_LENGTH;
     memset(send_buffer, 0, BUFFER_LENGTH);
 
@@ -295,61 +296,12 @@ int sendall(int s, char *buf, int *len) {
         connection_descriptor = *((int *)connection_descriptor_pointer);
     }
 
-    /* Receive client request and process it */
+    /** Receive client request and process it */
     // Initialise receive buffer to BUFFER_LENGTH, but possible to realloc
     receive_buffer = (char *) malloc(sizeof(char) * receive_buffer_size);
     assert(receive_buffer != NULL);
-
-    // Read all of client's request and break when everything readed
-    while (1) {
-        // Read from client
-        empty_buffer_space = receive_buffer_size - 1 - total_read;
-        n = recv(connection_descriptor, receive_buffer + total_read,
-            empty_buffer_space, 0); // save space for nullbyte
-        // Client disconnected or error
-        if (n == 0) {
-            receive_buffer[total_read] = '\0';
-            break;
-        }
-        if (n < 0) {
-            perror("ERROR receiving from socket");
-            close(connection_descriptor);
-            close(socket_descriptor);
-            exit(EXIT_FAILURE);
-        }
-        total_read += n;
-
-        // Check the last 4 element read, to see if it's the end of header
-        // (end of header = \r\n\r\n)
-        for (i = total_read - HEADER_PATTERN_START ; i < total_read; i++) {
-            // just to be safe count the number of subsequence new line
-            if (receive_buffer[i] == '\r') {
-                // Ignore
-            }
-            // If see new line start to increment finis_reading flag
-            // When finish_reading flag = 2, header has been read
-            else if (receive_buffer[i] == '\n') {
-                finish_reading++;
-            }
-            // If see other letter, reset the flag
-            else {
-                finish_reading = 0;
-            }
-        }
-
-        // When finish_reading flag = 2, it means that everything has been read
-        // and so break from while loop
-        if (finish_reading == FINISH_READING_FLAG) {
-            receive_buffer[total_read] = '\0'; // append null byte at the end
-            break;
-        }
-        // If we haven't finish reading, then definitely need to realloc,
-        // as we need more space
-        else {
-            receive_buffer_size *= 2;
-            receive_buffer = realloc(receive_buffer, receive_buffer_size);
-        }
-    }
+    total_read = receive_all(receive_buffer, &receive_buffer_size,
+        connection_descriptor);
     // Print to server log if there is item received
     if (total_read) {
         printf("%s\n", receive_buffer);
@@ -556,4 +508,69 @@ int sendall(int s, char *buf, int *len) {
      if (creation_status != 0) {
          fprintf(stderr, "Error creating thread");
      }
+}
+
+/**
+ * Receive all client's request header
+ *
+ */
+int receive_all(char *receive_buffer, int *receive_buffer_size,
+    int connection_descriptor) {
+    int finish_reading, empty_buffer_space, n, i, total_read;
+
+    // Initialise total read
+    total_read = 0;
+
+    // Read all of client's request and break when everything readed
+    while (1) {
+        finish_reading = 0;
+        // Read from client
+        empty_buffer_space = *receive_buffer_size - 1 - total_read;
+        n = recv(connection_descriptor, receive_buffer + total_read,
+            empty_buffer_space, 0); // save space for nullbyte
+        // Client disconnected or error
+        if (n == 0) {
+            receive_buffer[total_read] = '\0';
+            break;
+        }
+        if (n < 0) {
+            perror("ERROR receiving from socket");
+            close(connection_descriptor);
+            close(socket_descriptor);
+            exit(EXIT_FAILURE);
+        }
+        total_read += n;
+
+        // Check the last 4 element read, to see if it's the end of header
+        // (end of header = \r\n\r\n)
+        for (i = total_read - HEADER_PATTERN_START ; i < total_read; i++) {
+            // just to be safe count the number of subsequence new line
+            if (receive_buffer[i] == '\r') {
+                // Ignore
+            }
+            // If see new line start to increment finis_reading flag
+            // When finish_reading flag = 2, header has been read
+            else if (receive_buffer[i] == '\n') {
+                finish_reading++;
+            }
+            // If see other letter, reset the flag
+            else {
+                finish_reading = 0;
+            }
+        }
+
+        // When finish_reading flag = 2, it means that everything has been read
+        // and so break from while loop
+        if (finish_reading == FINISH_READING_FLAG) {
+            receive_buffer[total_read] = '\0'; // append null byte at the end
+            break;
+        }
+        // If we haven't finish reading, then definitely need to realloc,
+        // as we need more space
+        else {
+            *receive_buffer_size *= 2;
+            receive_buffer = realloc(receive_buffer, *receive_buffer_size);
+        }
+    }
+    return total_read;
 }
