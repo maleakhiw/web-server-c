@@ -55,7 +55,6 @@ void send_http_success(char send_buffer[], char *content_type,
 void send_http_failure(char send_buffer[], char *content_type,
     int connection_descriptor);
 
-
 /** Global variable */
 char *web_root_path;
 int socket_descriptor;
