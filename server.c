@@ -16,7 +16,7 @@ int socket_descriptor;
 /** Main Function */
 int main(int argc, char *argv[]) {
     // Variable
-    int connection_descriptor;
+    int connection_descriptor = 0;
     int port_number;
     struct sockaddr_in server_address, client_address;
     socklen_t client_address_len;
