@@ -1,5 +1,5 @@
 /**
- * HTTP Server (GET) - C File
+ * HTTP Server (GET)
  * Author: Maleakhi Agung Wijaya (maleakhiw)
  * Student ID: 784091
  * Date: 15/04/2018
@@ -24,7 +24,7 @@
 #define PORT_INDEX 1
 #define WEB_ROOT_PATH_INDEX 2
 #define BACKLOG 10
-#define BUFFER_LENGTH 10
+#define BUFFER_LENGTH 8000
 #define HEADER_PATTERN_START 4
 #define FINISH_READING_FLAG 2
 
@@ -44,17 +44,15 @@ const char BODY_NOT_FOUND[] =
 void initialise_arguments(int argc, char *argv[], int *port_number);
 int setup_server(struct sockaddr_in *server_address, int port_number);
 char *get_relative_path(char *receive_buffer, int socket_descriptor,
-   int connection_descriptor, int *is_free);
+    int connection_descriptor, int *is_free);
 char *get_content_type(char *relative_path);
 int sendall(int s, char *buf, int *len);
 void *process_request(void *connection_descriptor_pointer);
 void handle_multithread(int connection_descriptor);
-int receive_all(char *receive_buffer, int *receive_buffer_size,
-   int connection_descriptor);
 void send_http_success(char send_buffer[], char *content_type,
-   int connection_descriptor);
+    int connection_descriptor);
 void send_http_failure(char send_buffer[], char *content_type,
-   int connection_descriptor);
+    int connection_descriptor);
 
 /** Global variable */
 char *web_root_path;
@@ -110,8 +108,7 @@ int main(int argc, char *argv[]) {
 void initialise_arguments(int argc, char *argv[], int *port_number) {
     // Check that argument to command line is sufficient
     if (argc != ARGUMENT) {
-        fprintf(stderr, "Please provide the correct command: \
-        ./server [port number] [path to web root]\n");
+        fprintf(stderr, "Please provide the correct command: ./server [port number] [path to web root]\n");
         exit(EXIT_FAILURE);
     }
 
@@ -144,14 +141,14 @@ int setup_server(struct sockaddr_in *server_address, int port_number) {
     (*server_address).sin_port = htons(port_number);
     // Bind the socket with address (IP and port number)
     if (bind(socket_descriptor, (struct sockaddr *) server_address,
-    sizeof(*server_address)) < 0) {
+        sizeof(*server_address)) < 0) {
         perror("ERROR on binding process");
         close(socket_descriptor);
         exit(EXIT_FAILURE);
     }
 
     // Listen socket
-    if(listen(socket_descriptor, BACKLOG) < 0) {
+    if (listen(socket_descriptor, BACKLOG) < 0) {
         perror("ERROR listening");
         close(socket_descriptor);
         exit(EXIT_FAILURE);
@@ -216,8 +213,7 @@ char *get_relative_path(char *receive_buffer, int socket_descriptor,
 
     // By default / will return index.html
     if (token[strlen(token)-1] == '/') {
-        default_token = (char *) malloc((strlen(token) +
-            strlen("index.html") + 1) * sizeof(char));
+        default_token = (char *) malloc((strlen(token) + strlen("index.html") + 1) * sizeof(char));
         assert(default_token != NULL);
         strcpy(default_token, token);
         strcat(default_token, "index.html");
@@ -288,6 +284,7 @@ int sendall(int s, char *buf, int *len) {
     int n, file_found, len, total_read, is_free;
     size_t bytes_read = 0;
     FILE *file_descriptor;
+    int finish_reading, empty_buffer_space, i;
 
     // Initialise for receiving purposes
     total_read = 0;
@@ -307,8 +304,57 @@ int sendall(int s, char *buf, int *len) {
     // Initialise receive buffer to BUFFER_LENGTH, but possible to realloc
     receive_buffer = (char *) malloc(sizeof(char) * receive_buffer_size);
     assert(receive_buffer != NULL);
-    total_read = receive_all(receive_buffer, &receive_buffer_size,
-        connection_descriptor);
+
+    // Read all of client's request and break when everything readed
+    while (1) {
+        finish_reading = 0;
+        // Read from client
+        empty_buffer_space = receive_buffer_size - 1 - total_read; // save space for nullbyte
+        n = recv(connection_descriptor, receive_buffer + total_read, empty_buffer_space, 0);
+        // Client disconnected or error
+        if (n == 0) {
+            receive_buffer[total_read] = '\0';
+            break;
+        }
+        if (n < 0) {
+            perror("ERROR receiving from socket");
+            close(connection_descriptor);
+            close(socket_descriptor);
+            exit(EXIT_FAILURE);
+        }
+        total_read += n;
+
+        // Check the last 4 element read, to see if it's the end of header
+        // (end of header = \r\n\r\n)
+        for (i = total_read - HEADER_PATTERN_START ; i < total_read; i++) {
+            // just to be safe count the number of subsequence new line
+            if (receive_buffer[i] == '\r') {
+                // Ignore
+            }
+            // If see new line start to increment finis_reading flag
+            // When finish_reading flag = 2, header has been read
+            else if (receive_buffer[i] == '\n') {
+                finish_reading++;
+            }
+            // If see other letter, reset the flag
+            else {
+                finish_reading = 0;
+            }
+        }
+
+        // When finish_reading flag = 2, it means that everything has been read
+        // and so break from while loop
+        if (finish_reading == FINISH_READING_FLAG) {
+            receive_buffer[total_read] = '\0'; // append null byte at the end
+            break;
+        }
+        // If we haven't finish reading, then definitely need to realloc,
+        // as we need more space
+        else {
+            receive_buffer_size *= 2;
+            receive_buffer = realloc(receive_buffer, receive_buffer_size);
+        }
+    }
     // Print to server log if there is item received
     if (total_read) {
         printf("%s\n", receive_buffer);
@@ -316,7 +362,7 @@ int sendall(int s, char *buf, int *len) {
 
     // Get the URI of the client request
     relative_path = get_relative_path(receive_buffer, socket_descriptor,
-         connection_descriptor, &is_free);
+        connection_descriptor, &is_free);
     // If client request is invalid, close connection and do not continue
     if (relative_path == NULL) {
         free(receive_buffer);
@@ -325,8 +371,7 @@ int sendall(int s, char *buf, int *len) {
     }
 
     // Combine to get full path
-    full_path = (char *) malloc((strlen(relative_path) +
-        strlen(web_root_path) + 1) * sizeof(char));
+    full_path = (char *) malloc((strlen(relative_path) + strlen(web_root_path) + 1) * sizeof(char));
     assert(full_path != NULL);
     strcpy(full_path, web_root_path);
     strcat(full_path, relative_path);
@@ -415,77 +460,6 @@ int sendall(int s, char *buf, int *len) {
 }
 
 /**
- * Receive all client's request header
- * @param receive_buffer: buffer used to store client's request
- * @param receive_buffer_size: address of the size
- * @param connection_descriptor: used to receive
- * @param bytes reads
- */
-int receive_all(char *receive_buffer, int *receive_buffer_size,
-    int connection_descriptor) {
-    int finish_reading, empty_buffer_space, n, i, total_read;
-
-    // Initialise total read
-    total_read = 0;
-
-    // Read all of client's request and break when everything readed
-    while (1) {
-        finish_reading = 0;
-        // Read from client
-        empty_buffer_space = *receive_buffer_size - 1 - total_read;
-
-        printf("pointer: %p\n", receive_buffer);
-        printf("pointer2: %p\n", receive_buffer + total_read);
-        n = recv(connection_descriptor, receive_buffer + total_read,
-            empty_buffer_space, 0); // save space for nullbyte
-        // Client disconnected or error
-        if (n == 0) {
-            receive_buffer[total_read] = '\0';
-            break;
-        }
-        if (n < 0) {
-            perror("ERROR receiving from socket");
-            close(connection_descriptor);
-            close(socket_descriptor);
-            exit(EXIT_FAILURE);
-        }
-        total_read += n;
-
-        // Check the last 4 element read, to see if it's the end of header
-        // (end of header = \r\n\r\n)
-        for (i = total_read - HEADER_PATTERN_START ; i < total_read; i++) {
-            // just to be safe count the number of subsequence new line
-            if (receive_buffer[i] == '\r') {
-                // Ignore
-            }
-            // If see new line start to increment finis_reading flag
-            // When finish_reading flag = 2, header has been read
-            else if (receive_buffer[i] == '\n') {
-                finish_reading++;
-            }
-            // If see other letter, reset the flag
-            else {
-                finish_reading = 0;
-            }
-        }
-
-        // When finish_reading flag = 2, it means that everything has been read
-        // and so break from while loop
-        if (finish_reading == FINISH_READING_FLAG) {
-            receive_buffer[total_read] = '\0'; // append null byte at the end
-            break;
-        }
-        // If we haven't finish reading, then definitely need to realloc,
-        // as we need more space
-        else {
-            *receive_buffer_size *= 2;
-            receive_buffer = realloc(receive_buffer, *receive_buffer_size);
-        }
-    }
-    return total_read;
-}
-
-/**
  * Send 200 header
  * @param send_buffer: buffer used to send
  * @param content_type: content of the mime type/ extension
@@ -494,7 +468,7 @@ int receive_all(char *receive_buffer, int *receive_buffer_size,
 void send_http_success(char send_buffer[], char *content_type,
     int connection_descriptor) {
     int len, n;
-
+    // Send status ok
     len = sizeof(STATUS_OK) - 1;
     strcpy(send_buffer, STATUS_OK);
     n = sendall(connection_descriptor, send_buffer, &len);
@@ -551,6 +525,7 @@ void send_http_success(char send_buffer[], char *content_type,
         }
     }
 
+    // Send carriage return
     len = sizeof(CRLF) - 1;
     strcpy(send_buffer, CRLF);
     n = sendall(connection_descriptor, send_buffer, &len);
@@ -569,9 +544,9 @@ void send_http_success(char send_buffer[], char *content_type,
  * @param connection_descriptor: used to send header
  */
  void send_http_failure(char send_buffer[], char *content_type,
-    int connection_descriptor) {
+     int connection_descriptor) {
     int n, len;
-
+    // Send 404 status header
     len = sizeof(STATUS_NOT_FOUND) - 1;
     strcpy(send_buffer, STATUS_NOT_FOUND);
     n = sendall(connection_descriptor, send_buffer, &len);

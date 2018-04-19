@@ -1,0 +1,52 @@
+GET /index.html HTTP/1.1
+User-Agent: Wget/1.17.1 (linux-gnu)
+Accept: */*
+Accept-Encoding: identity
+Host: 127.0.0.1:5000
+Connection: Keep-Alive
+
+
+GET /junk.html HTTP/1.1
+User-Agent: Wget/1.17.1 (linux-gnu)
+Accept: */*
+Accept-Encoding: identity
+Host: 127.0.0.1:5000
+Connection: Keep-Alive
+
+
+GET /style.css HTTP/1.1
+User-Agent: Wget/1.17.1 (linux-gnu)
+Accept: */*
+Accept-Encoding: identity
+Host: 127.0.0.1:5000
+Connection: Keep-Alive
+
+
+GET /script.js HTTP/1.1
+User-Agent: Wget/1.17.1 (linux-gnu)
+Accept: */*
+Accept-Encoding: identity
+Host: 127.0.0.1:5000
+Connection: Keep-Alive
+
+
+GET /sample.jpg HTTP/1.1
+User-Agent: Wget/1.17.1 (linux-gnu)
+Accept: */*
+Accept-Encoding: identity
+Host: 127.0.0.1:5000
+Connection: Keep-Alive
+
+
+GET /directory/index.html HTTP/1.1
+User-Agent: Wget/1.17.1 (linux-gnu)
+Accept: */*
+Accept-Encoding: identity
+Host: 127.0.0.1:5000
+Connection: Keep-Alive
+
+
+GET /directory/style.css HTTP/1.1
+User-Agent: Wget/1.17.1 (linux-gnu)
+Accept: */*
+Accept-Encoding: ide
