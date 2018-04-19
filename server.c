@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <assert.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -35,6 +36,7 @@ const char MIME_HTML[] = "Content-Type: text/html\r\n";
 const char MIME_JPG[] = "Content-Type: image/jpeg\r\n";
 const char MIME_CSS[] = "Content-Type: text/css\r\n";
 const char MIME_JS[] = "Content-Type: application/javascript\r\n";
+const char MIME_PLAIN_TEXT[] = "Content-Type: text/plain\r\n";
 const char CRLF[] = "\r\n";
 const char BODY_NOT_FOUND[] =
 "<!DOCTYPE html>\r\n<html><head><title>404 Not Found</title></head>\r\n\
@@ -480,7 +482,7 @@ void send_http_success(char send_buffer[], char *content_type,
     }
 
     // Determine which content type to send
-    if (strcmp(content_type, "jpg") == 0) {
+    if (strcasecmp(content_type, "jpg") == 0 || strcasecmp(content_type, "jpeg") == 0) {
         len = sizeof(MIME_JPG) - 1;
         strcpy(send_buffer, MIME_JPG);
         n = sendall(connection_descriptor, send_buffer, &len);
@@ -491,7 +493,7 @@ void send_http_success(char send_buffer[], char *content_type,
             exit(EXIT_FAILURE);
         }
     }
-    else if (strcmp(content_type, "css") == 0) {
+    else if (strcasecmp(content_type, "css") == 0) {
         len = sizeof(MIME_CSS) - 1;
         strcpy(send_buffer, MIME_CSS);
         n = sendall(connection_descriptor, send_buffer, &len);
@@ -502,7 +504,7 @@ void send_http_success(char send_buffer[], char *content_type,
             exit(EXIT_FAILURE);
         }
     }
-    else if (strcmp(content_type, "js") == 0) {
+    else if (strcasecmp(content_type, "js") == 0) {
         len = sizeof(MIME_JS) - 1;
         strcpy(send_buffer, MIME_JS);
         n = sendall(connection_descriptor, send_buffer, &len);
@@ -513,9 +515,20 @@ void send_http_success(char send_buffer[], char *content_type,
             exit(EXIT_FAILURE);
         }
     }
-    else {
+    else if (strcasecmp(content_type, "html") == 0) {
         len = sizeof(MIME_HTML) - 1;
         strcpy(send_buffer, MIME_HTML);
+        n = sendall(connection_descriptor, send_buffer, &len);
+        if (n < 0) {
+            perror("ERROR sending from socket");
+            close(connection_descriptor);
+            close(socket_descriptor);
+            exit(EXIT_FAILURE);
+        }
+    }
+    else {
+        len = sizeof(MIME_PLAIN_TEXT) - 1;
+        strcpy(send_buffer, MIME_PLAIN_TEXT);
         n = sendall(connection_descriptor, send_buffer, &len);
         if (n < 0) {
             perror("ERROR sending from socket");
