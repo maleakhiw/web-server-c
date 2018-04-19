@@ -46,7 +46,7 @@ const char BODY_NOT_FOUND[] =
 "<!DOCTYPE html>\r\n<html><head><title>404 Not Found</title></head>\r\n<body><center><h1>404 Not Found</h1></center></body></html>\r\n";
 
 /* Declaration */
-char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_socket_descriptor, int *is_free);
+char *get_relative_path(char *receive_buffer, int socket_descriptor, int connection_descriptor, int *is_free);
 int setup_server(struct sockaddr_in *server_address, int port_number);
 char *get_content_type(char *relative_path);
 int sendall(int s, char *buf, int *len);
@@ -61,7 +61,7 @@ int socket_descriptor;
 /* Main Function */
 int main(int argc, char *argv[]) {
     // Variable
-    int new_socket_descriptor;
+    int connection_descriptor;
     int port_number;
     struct sockaddr_in server_address, client_address;
     socklen_t client_address_len;
@@ -89,16 +89,16 @@ int main(int argc, char *argv[]) {
     // Continuously accept for every clients
     while(1) {
         // New socket descriptor will be used to send and receive later
-        new_socket_descriptor = accept(socket_descriptor, (struct sockaddr *) &client_address, &client_address_len);
+        connection_descriptor = accept(socket_descriptor, (struct sockaddr *) &client_address, &client_address_len);
         // Check for ERROR
-        if (new_socket_descriptor < 0) {
+        if (connection_descriptor < 0) {
             perror("ERROR on accept");
             close(socket_descriptor);
             exit(1);
         }
 
         // Multithreaded processing
-        process_request(&new_socket_descriptor);
+        process_request(&connection_descriptor);
     }
 
     close(socket_descriptor);
@@ -148,11 +148,11 @@ int setup_server(struct sockaddr_in *server_address, int port_number) {
  * Get relative path from the receiver buffer
  * @param receive_buffer: buffer containing the client request
  * @param socket_descriptor: used for closing
- * @param new_socket_descriptor: used to send message if client do something wrong
+ * @param connection_descriptor: used to send message if client do something wrong
  * @param is_free: used to check whether token should be free
  * @return relative_path: relative path of the file that user requested
  */
-char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_socket_descriptor, int *is_free) {
+char *get_relative_path(char *receive_buffer, int socket_descriptor, int connection_descriptor, int *is_free) {
     char *token;
     char *default_token;
     char send_buffer[BUFFER_LENGTH];
@@ -169,14 +169,14 @@ char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_soc
     if (strcmp(token, "GET") != 0 || token == NULL) {
         len = sizeof(STATUS_BAD_REQUEST) - 1;
         strcpy(send_buffer, STATUS_BAD_REQUEST);
-        n = sendall(new_socket_descriptor, send_buffer, &len); // trim nullbyte
+        n = sendall(connection_descriptor, send_buffer, &len); // trim nullbyte
         if (n < 0) {
             perror("ERROR sending from socket");
-            close(new_socket_descriptor);
+            close(connection_descriptor);
             close(socket_descriptor);
             exit(1);
         }
-        close(new_socket_descriptor);
+        close(connection_descriptor);
         return NULL;
     }
 
@@ -186,14 +186,14 @@ char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_soc
     if (token[0] != '/' || token == NULL) {
         len = sizeof(STATUS_BAD_REQUEST) - 1;
         strcpy(send_buffer, STATUS_BAD_REQUEST);
-        n = sendall(new_socket_descriptor, send_buffer, &len); // trim nullbyte
+        n = sendall(connection_descriptor, send_buffer, &len); // trim nullbyte
         if (n < 0) {
             perror("ERROR sending from socket");
             close(socket_descriptor);
-            close(new_socket_descriptor);
+            close(connection_descriptor);
             exit(1);
         }
-        close(new_socket_descriptor);
+        close(connection_descriptor);
         return NULL;
     }
 
@@ -257,13 +257,13 @@ int sendall(int s, char *buf, int *len) {
 
 /**
  * Process client's request and response after accepting connection
- * @param new_socket_descriptor_pointer: address of (void*) new_socket_descriptor,
+ * @param new_socket_descriptor_pointer: address of (void*) connection_descriptor,
  * need to match the param and return for multithreading
  * @return NULL (nothing)
  */
  void *process_request(void *new_socket_descriptor_pointer) {
     char *receive_buffer, send_buffer[BUFFER_LENGTH];
-    int new_socket_descriptor;
+    int connection_descriptor;
     int finish_reading, receive_buffer_size;
     int i;
     int empty_buffer_space;
@@ -284,7 +284,7 @@ int sendall(int s, char *buf, int *len) {
         return NULL;
     }
     else {
-        new_socket_descriptor = *((int *)new_socket_descriptor_pointer);
+        connection_descriptor = *((int *)new_socket_descriptor_pointer);
     }
 
     /* Receive client request and process it */
@@ -296,7 +296,7 @@ int sendall(int s, char *buf, int *len) {
     while (1) {
         // Read from client
         empty_buffer_space = receive_buffer_size - 1 - total_read;
-        n = recv(new_socket_descriptor, receive_buffer + total_read, empty_buffer_space, 0); // save space for nullbyte
+        n = recv(connection_descriptor, receive_buffer + total_read, empty_buffer_space, 0); // save space for nullbyte
         // Client disconnected or error
         if (n == 0) {
             receive_buffer[total_read] = '\0';
@@ -304,7 +304,7 @@ int sendall(int s, char *buf, int *len) {
         }
         if (n < 0) {
             perror("ERROR receiving from socket");
-            close(new_socket_descriptor);
+            close(connection_descriptor);
             close(socket_descriptor);
             exit(1);
         }
@@ -344,7 +344,7 @@ int sendall(int s, char *buf, int *len) {
     }
 
     // Get the URI of the client request
-    relative_path = get_relative_path(receive_buffer, socket_descriptor, new_socket_descriptor, &is_free);
+    relative_path = get_relative_path(receive_buffer, socket_descriptor, connection_descriptor, &is_free);
     // If client request is invalid, close connection and do not continue process it
     if (relative_path == NULL) {
         free(receive_buffer);
@@ -377,10 +377,10 @@ int sendall(int s, char *buf, int *len) {
     if (file_found) {
         len = sizeof(STATUS_OK) - 1;
         strcpy(send_buffer, STATUS_OK);
-        n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
+        n = sendall(connection_descriptor, send_buffer, &len); // trim the nullbyte
         if (n < 0) {
             perror("ERROR sending from socket");
-            close(new_socket_descriptor);
+            close(connection_descriptor);
             close(socket_descriptor);
             exit(1);
         }
@@ -389,10 +389,10 @@ int sendall(int s, char *buf, int *len) {
         if (strcmp(content_type, "html") == 0) {
             len = sizeof(MIME_HTML) - 1;
             strcpy(send_buffer, MIME_HTML);
-            n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
+            n = sendall(connection_descriptor, send_buffer, &len); // trim the nullbyte
             if (n < 0) {
                 perror("ERROR sending from socket");
-                close(new_socket_descriptor);
+                close(connection_descriptor);
                 close(socket_descriptor);
                 exit(1);
             }
@@ -400,10 +400,10 @@ int sendall(int s, char *buf, int *len) {
         else if (strcmp(content_type, "css") == 0) {
             len = sizeof(MIME_CSS) - 1;
             strcpy(send_buffer, MIME_CSS);
-            n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
+            n = sendall(connection_descriptor, send_buffer, &len); // trim the nullbyte
             if (n < 0) {
                 perror("ERROR sending from socket");
-                close(new_socket_descriptor);
+                close(connection_descriptor);
                 close(socket_descriptor);
                 exit(1);
             }
@@ -411,10 +411,10 @@ int sendall(int s, char *buf, int *len) {
         else if (strcmp(content_type, "js") == 0) {
             len = sizeof(MIME_JS) - 1;
             strcpy(send_buffer, MIME_JS);
-            n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
+            n = sendall(connection_descriptor, send_buffer, &len); // trim the nullbyte
             if (n < 0) {
                 perror("ERROR sending from socket");
-                close(new_socket_descriptor);
+                close(connection_descriptor);
                 close(socket_descriptor);
                 exit(1);
             }
@@ -422,10 +422,10 @@ int sendall(int s, char *buf, int *len) {
         else {
             len = sizeof(MIME_JPG) - 1;
             strcpy(send_buffer, MIME_JPG);
-            n = sendall(new_socket_descriptor, send_buffer, &len);   // trim the nullbyte
+            n = sendall(connection_descriptor, send_buffer, &len);   // trim the nullbyte
             if (n < 0) {
                 perror("ERROR sending from socket");
-                close(new_socket_descriptor);
+                close(connection_descriptor);
                 close(socket_descriptor);
                 exit(1);
             }
@@ -433,10 +433,10 @@ int sendall(int s, char *buf, int *len) {
 
         len = sizeof(CRLF) - 1;
         strcpy(send_buffer, CRLF);
-        n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte, end of header
+        n = sendall(connection_descriptor, send_buffer, &len); // trim the nullbyte, end of header
         if (n < 0) {
             perror("ERROR sending from socket");
-            close(new_socket_descriptor);
+            close(connection_descriptor);
             close(socket_descriptor);
             exit(1);
         }
@@ -444,10 +444,10 @@ int sendall(int s, char *buf, int *len) {
         // read file in chunks
         while ((bytes_read = fread(send_buffer, sizeof(char), sizeof(send_buffer), file_descriptor))) {
             len = bytes_read;
-            n = sendall(new_socket_descriptor, send_buffer, &len);
+            n = sendall(connection_descriptor, send_buffer, &len);
             if (n < 0) {
                 perror("ERROR sending from socket");
-                close(new_socket_descriptor);
+                close(connection_descriptor);
                 close(socket_descriptor);
                 exit(1);
             }
@@ -458,30 +458,30 @@ int sendall(int s, char *buf, int *len) {
     else {
         len = sizeof(STATUS_NOT_FOUND) - 1;
         strcpy(send_buffer, STATUS_NOT_FOUND);
-        n = sendall(new_socket_descriptor, send_buffer, &len);
+        n = sendall(connection_descriptor, send_buffer, &len);
         if (n < 0) {
             perror("ERROR sending from socket");
-            close(new_socket_descriptor);
+            close(connection_descriptor);
             close(socket_descriptor);
             exit(1);
         }
 
         len = sizeof(MIME_HTML) - 1;
         strcpy(send_buffer, MIME_HTML);
-        n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
+        n = sendall(connection_descriptor, send_buffer, &len); // trim the nullbyte
         if (n < 0) {
             perror("ERROR sending from socket");
-            close(new_socket_descriptor);
+            close(connection_descriptor);
             close(socket_descriptor);
             exit(1);
         }
 
         len = sizeof(CRLF) - 1;
         strcpy(send_buffer, CRLF);
-        n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte, end of header
+        n = sendall(connection_descriptor, send_buffer, &len); // trim the nullbyte, end of header
         if (n < 0) {
             perror("ERROR sending from socket");
-            close(new_socket_descriptor);
+            close(connection_descriptor);
             close(socket_descriptor);
             exit(1);
         }
@@ -489,10 +489,10 @@ int sendall(int s, char *buf, int *len) {
         // Send 404 body
         len = sizeof(BODY_NOT_FOUND) - 1;
         strcpy(send_buffer, BODY_NOT_FOUND);
-        n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
+        n = sendall(connection_descriptor, send_buffer, &len); // trim the nullbyte
         if (n < 0) {
             perror("ERROR sending from socket");
-            close(new_socket_descriptor);
+            close(connection_descriptor);
             close(socket_descriptor);
             exit(1);
         }
@@ -510,6 +510,12 @@ int sendall(int s, char *buf, int *len) {
         is_free = 0;
     }
 
-    close(new_socket_descriptor);
+    close(connection_descriptor);
     return NULL;
  }
+
+/**
+ */
+ // void handle_multithread(int connection_descriptor) {
+ //
+ // }
