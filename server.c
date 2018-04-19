@@ -17,10 +17,10 @@
 #include <unistd.h>
 #include <pthread.h>
 
+#define print_debug printf
+
 /** TODO: Bug List */
-// - postman still persistent connection (being prioritised)
 // - multithread
-// - makefile
 
 /*****************************************************************************/
 
@@ -44,6 +44,8 @@ const char MIME_CSS[] = "Content-Type: text/css\r\n";
 const char MIME_JS[] = "Content-Type: application/javascript\r\n";
 
 const char CRLF[] = "\r\n";
+const char BODY_NOT_FOUND[] =
+"<!DOCTYPE html>\r\n<html><head><title>404 Not Found</title></head>\r\n<body><center><h1>404 Not Found</h1></center></body></html>\r\n";
 
 /* Declaration */
 char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_socket_descriptor, int *is_free);
@@ -57,7 +59,7 @@ int sendall(int s, char *buf, int *len);
 int main(int argc, char *argv[]) {
     /** Variable */
     // Socket variable
-    int socket_descriptor, port_number, new_socket_descriptor;
+    int socket_descriptor, port_number;
     char *receive_buffer, send_buffer[BUFFER_LENGTH];
     char *web_root_path, *relative_path, *full_path, *content_type;
     struct sockaddr_in server_address, client_address;
@@ -102,7 +104,7 @@ int main(int argc, char *argv[]) {
         receive_buffer_size = BUFFER_LENGTH;
 
         // New socket descriptor will be used to send and receive later
-        new_socket_descriptor = accept(socket_descriptor, (struct sockaddr *) &client_address, &client_address_len);
+        int new_socket_descriptor = accept(socket_descriptor, (struct sockaddr *) &client_address, &client_address_len);
         // Check for ERROR
         if (new_socket_descriptor < 0) {
             perror("ERROR on accept");
@@ -112,6 +114,9 @@ int main(int argc, char *argv[]) {
 
         /* Receive client request and process it */
         // Initialise receive buffer to BUFFER_LENGTH, but possible to realloc
+        print_debug("Got a request. Receiving...\n");
+
+
         receive_buffer = (char *) malloc(sizeof(char) * receive_buffer_size);
         assert(receive_buffer != NULL);
 
@@ -120,6 +125,7 @@ int main(int argc, char *argv[]) {
             // Read from client
             empty_buffer_space = receive_buffer_size - 1 - total_read;
             n = recv(new_socket_descriptor, receive_buffer + total_read, empty_buffer_space, 0); // save space for nullbyte
+            print_debug("while(1): received %d bytes\n", n);
             // Client disconnected or error
             if (n == 0) {
                 receive_buffer[total_read] = '\0';
@@ -127,7 +133,7 @@ int main(int argc, char *argv[]) {
             }
             if (n < 0) {
                 perror("ERROR receiving from socket");
-                close(new_socket_descriptor);
+                print_debug("Closing socket descriptor.\n"); close(new_socket_descriptor);
                 close(socket_descriptor);
                 exit(1);
             }
@@ -182,6 +188,7 @@ int main(int argc, char *argv[]) {
         strcat(full_path, relative_path);
 
         /* Send response to client */
+        print_debug("Sending response to client...\n");
         // Try to open the file requested by client
         file_descriptor = fopen(full_path, "r");
         // File not found
@@ -198,12 +205,14 @@ int main(int argc, char *argv[]) {
 
         // Send header accordingly, 200 for found file 404 otherwise
         if (file_found) {
+            print_debug("File found...\n");
+
             len = sizeof(STATUS_OK) - 1;
             strcpy(send_buffer, STATUS_OK);
             n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
             if (n < 0) {
                 perror("ERROR sending from socket");
-                close(new_socket_descriptor);
+                print_debug("Closing socket descriptor.\n"); close(new_socket_descriptor);
                 close(socket_descriptor);
                 exit(1);
             }
@@ -215,7 +224,7 @@ int main(int argc, char *argv[]) {
                 n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
                 if (n < 0) {
                     perror("ERROR sending from socket");
-                    close(new_socket_descriptor);
+                    print_debug("Closing socket descriptor.\n"); close(new_socket_descriptor);
                     close(socket_descriptor);
                     exit(1);
                 }
@@ -226,7 +235,7 @@ int main(int argc, char *argv[]) {
                 n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
                 if (n < 0) {
                     perror("ERROR sending from socket");
-                    close(new_socket_descriptor);
+                    print_debug("Closing socket descriptor.\n"); close(new_socket_descriptor);
                     close(socket_descriptor);
                     exit(1);
                 }
@@ -237,7 +246,7 @@ int main(int argc, char *argv[]) {
                 n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
                 if (n < 0) {
                     perror("ERROR sending from socket");
-                    close(new_socket_descriptor);
+                    print_debug("Closing socket descriptor.\n"); close(new_socket_descriptor);
                     close(socket_descriptor);
                     exit(1);
                 }
@@ -248,7 +257,7 @@ int main(int argc, char *argv[]) {
                 n = sendall(new_socket_descriptor, send_buffer, &len);   // trim the nullbyte
                 if (n < 0) {
                     perror("ERROR sending from socket");
-                    close(new_socket_descriptor);
+                    print_debug("Closing socket descriptor.\n"); close(new_socket_descriptor);
                     close(socket_descriptor);
                     exit(1);
                 }
@@ -259,7 +268,7 @@ int main(int argc, char *argv[]) {
             n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte, end of header
             if (n < 0) {
                 perror("ERROR sending from socket");
-                close(new_socket_descriptor);
+                print_debug("Closing socket descriptor.\n"); close(new_socket_descriptor);
                 close(socket_descriptor);
                 exit(1);
             }
@@ -270,68 +279,34 @@ int main(int argc, char *argv[]) {
                 n = sendall(new_socket_descriptor, send_buffer, &len);
                 if (n < 0) {
                     perror("ERROR sending from socket");
-                    close(new_socket_descriptor);
+                    print_debug("Closing socket descriptor.\n"); close(new_socket_descriptor);
                     close(socket_descriptor);
                     exit(1);
                 }
             }
-
+            fclose(file_descriptor); // close the file
         }
+        // File not found
         else {
+            print_debug("File not found, sending 404...\n");
+
             len = sizeof(STATUS_NOT_FOUND) - 1;
             strcpy(send_buffer, STATUS_NOT_FOUND);
             n = sendall(new_socket_descriptor, send_buffer, &len);
             if (n < 0) {
                 perror("ERROR sending from socket");
-                close(new_socket_descriptor);
+                print_debug("Closing socket descriptor.\n"); close(new_socket_descriptor);
                 close(socket_descriptor);
                 exit(1);
             }
-
-            // Determine which content type to send
-            if (strcmp(content_type, "html") == 0) {
-                len = sizeof(MIME_HTML) - 1;
-                strcpy(send_buffer, MIME_HTML);
-                n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
-                if (n < 0) {
-                    perror("ERROR sending from socket");
-                    close(new_socket_descriptor);
-                    close(socket_descriptor);
-                    exit(1);
-                }
-            }
-            else if (strcmp(content_type, "css") == 0) {
-                len = sizeof(MIME_CSS) - 1;
-                strcpy(send_buffer, MIME_CSS);
-                n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
-                if (n < 0) {
-                    perror("ERROR sending from socket");
-                    close(new_socket_descriptor);
-                    close(socket_descriptor);
-                    exit(1);
-                }
-            }
-            else if (strcmp(content_type, "js") == 0) {
-                len = sizeof(MIME_JS) - 1;
-                strcpy(send_buffer, MIME_JS);
-                n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
-                if (n < 0) {
-                    perror("ERROR sending from socket");
-                    close(new_socket_descriptor);
-                    close(socket_descriptor);
-                    exit(1);
-                }
-            }
-            else {
-                len = sizeof(MIME_JPG) - 1;
-                strcpy(send_buffer, MIME_JPG);
-                n = sendall(new_socket_descriptor, send_buffer, &len);   // trim the nullbyte
-                if (n < 0) {
-                    perror("ERROR sending from socket");
-                    close(new_socket_descriptor);
-                    close(socket_descriptor);
-                    exit(1);
-                }
+            len = sizeof(MIME_HTML) - 1;
+            strcpy(send_buffer, MIME_HTML);
+            n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
+            if (n < 0) {
+                perror("ERROR sending from socket");
+                print_debug("Closing socket descriptor.\n"); close(new_socket_descriptor);
+                close(socket_descriptor);
+                exit(1);
             }
 
             len = sizeof(CRLF) - 1;
@@ -339,7 +314,18 @@ int main(int argc, char *argv[]) {
             n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte, end of header
             if (n < 0) {
                 perror("ERROR sending from socket");
-                close(new_socket_descriptor);
+                print_debug("Closing socket descriptor.\n"); close(new_socket_descriptor);
+                close(socket_descriptor);
+                exit(1);
+            }
+
+            // Send 404 body
+            len = sizeof(BODY_NOT_FOUND) - 1;
+            strcpy(send_buffer, BODY_NOT_FOUND);
+            n = sendall(new_socket_descriptor, send_buffer, &len); // trim the nullbyte
+            if (n < 0) {
+                perror("ERROR sending from socket");
+                print_debug("Closing socket descriptor.\n"); close(new_socket_descriptor);
                 close(socket_descriptor);
                 exit(1);
             }
@@ -357,7 +343,7 @@ int main(int argc, char *argv[]) {
             is_free = 0;
         }
 
-        close(new_socket_descriptor);
+        print_debug("Closing socket descriptor.\n"); close(new_socket_descriptor);
     }
 
     close(socket_descriptor);
@@ -419,7 +405,7 @@ char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_soc
 
     // Safety precaution for persistent browser
     if (strlen(receive_buffer) == 0) {
-        close(new_socket_descriptor);
+        print_debug("Closing socket descriptor.\n"); close(new_socket_descriptor);
         return NULL;
     }
 
@@ -432,11 +418,11 @@ char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_soc
         n = sendall(new_socket_descriptor, send_buffer, &len); // trim nullbyte
         if (n < 0) {
             perror("ERROR sending from socket");
-            close(new_socket_descriptor);
+            print_debug("Closing socket descriptor.\n"); close(new_socket_descriptor);
             close(socket_descriptor);
             exit(1);
         }
-        close(new_socket_descriptor);
+        print_debug("Closing socket descriptor.\n"); close(new_socket_descriptor);
         return NULL;
     }
 
@@ -450,10 +436,10 @@ char *get_relative_path(char *receive_buffer, int socket_descriptor, int new_soc
         if (n < 0) {
             perror("ERROR sending from socket");
             close(socket_descriptor);
-            close(new_socket_descriptor);
+            print_debug("Closing socket descriptor.\n"); close(new_socket_descriptor);
             exit(1);
         }
-        close(new_socket_descriptor);
+        print_debug("Closing socket descriptor.\n"); close(new_socket_descriptor);
         return NULL;
     }
 
