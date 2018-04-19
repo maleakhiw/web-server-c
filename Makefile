@@ -4,7 +4,7 @@
 
 # Constant
 CC = gcc
-CFLAGS = -lpthread -I./
+CFLAGS = -lpthread
 
 # Default if user type 'make'
 default: server
