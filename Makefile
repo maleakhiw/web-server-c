@@ -1,10 +1,10 @@
-# Author: Maleakhi Agung Wijaya
+# Author: Maleakhi Agung Wijaya (maleakhiw)
 # Student ID: 784091
 # Makefile for COMP30023 Assignment 1
 
 # Constant
 CC = gcc
-CFLAGS = -lpthread
+CFLAGS = -lpthread -I./
 
 # Default if user type 'make'
 default: server
