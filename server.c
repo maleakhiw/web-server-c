@@ -52,6 +52,9 @@ int receive_all(char *receive_buffer, int *receive_buffer_size,
     int connection_descriptor);
 void send_http_success(char send_buffer[], char *content_type,
     int connection_descriptor);
+void send_http_failure(char send_buffer[], char *content_type,
+    int connection_descriptor);
+
 
 /** Global variable */
 char *web_root_path;
@@ -361,46 +364,7 @@ int sendall(int s, char *buf, int *len) {
     }
     // File not found
     else {
-        len = sizeof(STATUS_NOT_FOUND) - 1;
-        strcpy(send_buffer, STATUS_NOT_FOUND);
-        n = sendall(connection_descriptor, send_buffer, &len);
-        if (n < 0) {
-            perror("ERROR sending from socket");
-            close(connection_descriptor);
-            close(socket_descriptor);
-            exit(EXIT_FAILURE);
-        }
-
-        len = sizeof(MIME_HTML) - 1;
-        strcpy(send_buffer, MIME_HTML);
-        n = sendall(connection_descriptor, send_buffer, &len);
-        if (n < 0) {
-            perror("ERROR sending from socket");
-            close(connection_descriptor);
-            close(socket_descriptor);
-            exit(EXIT_FAILURE);
-        }
-
-        len = sizeof(CRLF) - 1;
-        strcpy(send_buffer, CRLF);
-        n = sendall(connection_descriptor, send_buffer, &len);
-        if (n < 0) {
-            perror("ERROR sending from socket");
-            close(connection_descriptor);
-            close(socket_descriptor);
-            exit(EXIT_FAILURE);
-        }
-
-        // Send 404 body
-        len = sizeof(BODY_NOT_FOUND) - 1;
-        strcpy(send_buffer, BODY_NOT_FOUND);
-        n = sendall(connection_descriptor, send_buffer, &len);
-        if (n < 0) {
-            perror("ERROR sending from socket");
-            close(connection_descriptor);
-            close(socket_descriptor);
-            exit(EXIT_FAILURE);
-        }
+        send_http_failure(send_buffer, content_type, connection_descriptor);
     }
 
     /* Close socket and free */
@@ -517,7 +481,10 @@ int receive_all(char *receive_buffer, int *receive_buffer_size,
 }
 
 /**
- * Send successfully header
+ * Send 200 header
+ * @param send_buffer: buffer used to send
+ * @param content_type: content of the mime type/ extension
+ * @param connection_descriptor: used to send header
  */
 void send_http_success(char send_buffer[], char *content_type,
     int connection_descriptor) {
@@ -581,6 +548,56 @@ void send_http_success(char send_buffer[], char *content_type,
 
     len = sizeof(CRLF) - 1;
     strcpy(send_buffer, CRLF);
+    n = sendall(connection_descriptor, send_buffer, &len);
+    if (n < 0) {
+        perror("ERROR sending from socket");
+        close(connection_descriptor);
+        close(socket_descriptor);
+        exit(EXIT_FAILURE);
+    }
+}
+
+/**
+ * Send 404 header
+ * @param send_buffer: buffer used to send
+ * @param content_type: content of the mime type/ extension
+ * @param connection_descriptor: used to send header
+ */
+ void send_http_failure(char send_buffer[], char *content_type,
+    int connection_descriptor) {
+    int n, len;
+
+    len = sizeof(STATUS_NOT_FOUND) - 1;
+    strcpy(send_buffer, STATUS_NOT_FOUND);
+    n = sendall(connection_descriptor, send_buffer, &len);
+    if (n < 0) {
+        perror("ERROR sending from socket");
+        close(connection_descriptor);
+        close(socket_descriptor);
+        exit(EXIT_FAILURE);
+    }
+    len = sizeof(MIME_HTML) - 1;
+    strcpy(send_buffer, MIME_HTML);
+    n = sendall(connection_descriptor, send_buffer, &len);
+    if (n < 0) {
+        perror("ERROR sending from socket");
+        close(connection_descriptor);
+        close(socket_descriptor);
+        exit(EXIT_FAILURE);
+    }
+    len = sizeof(CRLF) - 1;
+    strcpy(send_buffer, CRLF);
+    n = sendall(connection_descriptor, send_buffer, &len);
+    if (n < 0) {
+        perror("ERROR sending from socket");
+        close(connection_descriptor);
+        close(socket_descriptor);
+        exit(EXIT_FAILURE);
+    }
+
+    // Send 404 body
+    len = sizeof(BODY_NOT_FOUND) - 1;
+    strcpy(send_buffer, BODY_NOT_FOUND);
     n = sendall(connection_descriptor, send_buffer, &len);
     if (n < 0) {
         perror("ERROR sending from socket");
