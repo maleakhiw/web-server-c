@@ -1,15 +1,14 @@
-/*
+/**
  * Author: Maleakhi Agung Wijaya
  * Student ID: 784091
- * Date: 17/04/2018
+ * Date: 15/04/2018
  */
 
- /* Library */
+ /** Library */
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <assert.h>
-
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <sys/types.h>
@@ -19,11 +18,10 @@
 
 /*****************************************************************************/
 
-/* Constant */
+/** Constant */
 #define ARGUMENT 3
 #define PORT_INDEX 1
 #define WEB_ROOT_PATH_INDEX 2
-
 #define BACKLOG 10
 #define BUFFER_LENGTH 8000
 #define HEADER_PATTERN_START 4
@@ -32,33 +30,32 @@
 const char STATUS_OK[] = "HTTP/1.0 200 OK\r\n";
 const char STATUS_NOT_FOUND[] = "HTTP/1.0 404 Not Found\r\n";
 const char STATUS_BAD_REQUEST[] = "HTTP/1.0 400 Bad Request\r\n";
-
 const char MIME_HTML[] = "Content-Type: text/html\r\n";
 const char MIME_JPG[] = "Content-Type: image/jpeg\r\n";
 const char MIME_CSS[] = "Content-Type: text/css\r\n";
 const char MIME_JS[] = "Content-Type: application/javascript\r\n";
-
 const char CRLF[] = "\r\n";
 const char BODY_NOT_FOUND[] =
 "<!DOCTYPE html>\r\n<html><head><title>404 Not Found</title></head>\r\n\
 <body><center><h1>404 Not Found</h1></center></body></html>\r\n";
 
-/* Declaration */
+/** Function Declaration */
+void initialise_arguments(int argc, char *argv[], int *port_number);
+int setup_server(struct sockaddr_in *server_address, int port_number);
 char *get_relative_path(char *receive_buffer, int socket_descriptor,
     int connection_descriptor, int *is_free);
-int setup_server(struct sockaddr_in *server_address, int port_number);
 char *get_content_type(char *relative_path);
 int sendall(int s, char *buf, int *len);
 void *process_request(void *connection_descriptor_pointer);
 void handle_multithread(int connection_descriptor);
 
-/* Global variable */
+/** Global variable */
 char *web_root_path;
 int socket_descriptor;
 
 /*****************************************************************************/
 
-/* Main Function */
+/** Main Function */
 int main(int argc, char *argv[]) {
     // Variable
     int connection_descriptor;
@@ -66,39 +63,28 @@ int main(int argc, char *argv[]) {
     struct sockaddr_in server_address, client_address;
     socklen_t client_address_len;
 
-    /* Initialisation */
-    // Check that argument to command line is sufficient
-    if (argc != ARGUMENT) {
-        fprintf(stderr, "Please provide the correct command: \
-        ./server [port number] [path to web root]\n");
-        exit(1);
-    }
-
-    // Extract arguments from command line and make sure everything is valid
-    port_number = atoi(argv[PORT_INDEX]);
-    web_root_path = argv[WEB_ROOT_PATH_INDEX];
-
-    // Initialise address, buffers
+    /** Initialisation */
+    initialise_arguments(argc, argv, &port_number);
     memset(&server_address, 0, sizeof(server_address));
 
-    /* Setup server */
+    /** Setup server */
     socket_descriptor = setup_server(&server_address, port_number);
 
-    /* Accept Client Connection */
+    /** Accept Client Connection */
     client_address_len = sizeof(client_address);
-
     // Continuously accept for every clients
     while(1) {
         // New socket descriptor will be used to send and receive later
-        connection_descriptor = accept(socket_descriptor, (struct sockaddr *) &client_address, &client_address_len);
+        connection_descriptor = accept(socket_descriptor,
+            (struct sockaddr *) &client_address, &client_address_len);
         // Check for ERROR
         if (connection_descriptor < 0) {
             perror("ERROR on accept");
             close(socket_descriptor);
-            exit(1);
+            exit(EXIT_FAILURE);
         }
 
-        // Multithreaded processing
+        /** Multithread processing (pass to worker thread) */
         handle_multithread(connection_descriptor);
     }
 
@@ -108,9 +94,28 @@ int main(int argc, char *argv[]) {
 
 /*****************************************************************************/
 
+/**
+ * Handle command line arguments from user
+ * @param argc: number of arguments
+ * @param argv: arguments from terminal
+ * @param port_number: address of port number to be changed in main
+ */
+void initialise_arguments(int argc, char *argv[], int *port_number) {
+    // Check that argument to command line is sufficient
+    if (argc != ARGUMENT) {
+        fprintf(stderr, "Please provide the correct command: \
+        ./server [port number] [path to web root]\n");
+        exit(EXIT_FAILURE);
+    }
+
+    // Extract arguments from command line and make sure everything is valid
+    *port_number = atoi(argv[PORT_INDEX]);
+    web_root_path = argv[WEB_ROOT_PATH_INDEX];
+}
+
 /*
  * Used to setup server, starting from creating socket, address, bind, and listen
- * @param *server_address: address of the server_address (pointer)
+ * @param server_address: address of the server_address (pointer)
  * @param port_number: port number
  * @return socket_descriptor: file descriptor for the socket created
  */
@@ -119,11 +124,10 @@ int setup_server(struct sockaddr_in *server_address, int port_number) {
 
     // Create socket
     socket_descriptor = socket(AF_INET, SOCK_STREAM, 0);
-
     // Check for error, socket_descriptor will be -1 if there is ERROR
     if (socket_descriptor < 0) {
         perror("ERROR opening socket");
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     // Bind socket
@@ -131,16 +135,20 @@ int setup_server(struct sockaddr_in *server_address, int port_number) {
     (*server_address).sin_family = AF_INET;
     (*server_address).sin_addr.s_addr = htonl(INADDR_ANY);
     (*server_address).sin_port = htons(port_number);
-
     // Bind the socket with address (IP and port number)
-    if (bind(socket_descriptor, (struct sockaddr *) server_address, sizeof(*server_address)) < 0) {
+    if (bind(socket_descriptor, (struct sockaddr *) server_address,
+    sizeof(*server_address)) < 0) {
         perror("ERROR on binding process");
         close(socket_descriptor);
-        exit(1);
+        exit(EXIT_FAILURE);
     }
 
     // Listen socket
-    listen(socket_descriptor, BACKLOG);
+    if(listen(socket_descriptor, BACKLOG) < 0 ) {
+        perror("ERROR listening");
+        close(socket_descriptor);
+        exit(EXIT_FAILURE);
+    }
 
     return socket_descriptor;
 }
@@ -149,13 +157,13 @@ int setup_server(struct sockaddr_in *server_address, int port_number) {
  * Get relative path from the receiver buffer
  * @param receive_buffer: buffer containing the client request
  * @param socket_descriptor: used for closing
- * @param connection_descriptor: used to send message if client do something wrong
+ * @param connection_descriptor: used for sending error message
  * @param is_free: used to check whether token should be free
  * @return relative_path: relative path of the file that user requested
  */
-char *get_relative_path(char *receive_buffer, int socket_descriptor, int connection_descriptor, int *is_free) {
-    char *token;
-    char *default_token;
+char *get_relative_path(char *receive_buffer, int socket_descriptor,
+    int connection_descriptor, int *is_free) {
+    char *token, *default_token;
     char send_buffer[BUFFER_LENGTH];
     int n, len;
 
@@ -175,13 +183,13 @@ char *get_relative_path(char *receive_buffer, int socket_descriptor, int connect
             perror("ERROR sending from socket");
             close(connection_descriptor);
             close(socket_descriptor);
-            exit(1);
+            exit(EXIT_FAILURE);
         }
         close(connection_descriptor);
         return NULL;
     }
 
-    // Make sure that the first token is GET, if it is not then it's not valid request
+    // Get the relative path
     token = strtok(NULL, " ");
     // Safety precaution and making sure client is providing valid path
     if (token[0] != '/' || token == NULL) {
@@ -192,7 +200,7 @@ char *get_relative_path(char *receive_buffer, int socket_descriptor, int connect
             perror("ERROR sending from socket");
             close(socket_descriptor);
             close(connection_descriptor);
-            exit(1);
+            exit(EXIT_FAILURE);
         }
         close(connection_descriptor);
         return NULL;
@@ -200,7 +208,8 @@ char *get_relative_path(char *receive_buffer, int socket_descriptor, int connect
 
     // By default / will return index.html
     if (token[strlen(token)-1] == '/') {
-        default_token = (char *) malloc((strlen(token) + strlen("index.html") + 1) * sizeof(char));
+        default_token = (char *) malloc((strlen(token) +
+            strlen("index.html") + 1) * sizeof(char));
         assert(default_token != NULL);
         strcpy(default_token, token);
         strcat(default_token, "index.html");
@@ -263,16 +272,14 @@ int sendall(int s, char *buf, int *len) {
  * @return NULL (nothing)
  */
  void *process_request(void *connection_descriptor_pointer) {
-    char *receive_buffer, send_buffer[BUFFER_LENGTH];
+     // Variable
     int connection_descriptor;
-    int finish_reading, receive_buffer_size;
-    int i;
-    int empty_buffer_space;
-    int n, file_found, len, total_read;
-    int is_free = 0;
-    FILE *file_descriptor;
-    size_t bytes_read = 0;
+    char *receive_buffer, send_buffer[BUFFER_LENGTH];
     char *relative_path, *full_path, *content_type;
+    int finish_reading, receive_buffer_size, i, empty_buffer_space;
+    int n, file_found, len, total_read, is_free;
+    size_t bytes_read = 0;
+    FILE *file_descriptor;
 
     // Initialise for receiving purposes
     total_read = 0;
@@ -297,7 +304,8 @@ int sendall(int s, char *buf, int *len) {
     while (1) {
         // Read from client
         empty_buffer_space = receive_buffer_size - 1 - total_read;
-        n = recv(connection_descriptor, receive_buffer + total_read, empty_buffer_space, 0); // save space for nullbyte
+        n = recv(connection_descriptor, receive_buffer + total_read,
+            empty_buffer_space, 0); // save space for nullbyte
         // Client disconnected or error
         if (n == 0) {
             receive_buffer[total_read] = '\0';
@@ -307,11 +315,12 @@ int sendall(int s, char *buf, int *len) {
             perror("ERROR receiving from socket");
             close(connection_descriptor);
             close(socket_descriptor);
-            exit(1);
+            exit(EXIT_FAILURE);
         }
         total_read += n;
 
-        // Check the last 4 element read, to see if it's the end of header (end of header = \r\n\r\n)
+        // Check the last 4 element read, to see if it's the end of header
+        // (end of header = \r\n\r\n)
         for (i = total_read - HEADER_PATTERN_START ; i < total_read; i++) {
             // just to be safe count the number of subsequence new line
             if (receive_buffer[i] == '\r') {
@@ -328,12 +337,14 @@ int sendall(int s, char *buf, int *len) {
             }
         }
 
-        // When finish_reading flag = 2, it means that everything has been read and so break from while loop
+        // When finish_reading flag = 2, it means that everything has been read
+        // and so break from while loop
         if (finish_reading == FINISH_READING_FLAG) {
-            receive_buffer[total_read] = '\0'; // append null byte at the end of reading header
+            receive_buffer[total_read] = '\0'; // append null byte at the end
             break;
         }
-        // If we haven't finish reading, then definitely need to realloc, as we need more space
+        // If we haven't finish reading, then definitely need to realloc,
+        // as we need more space
         else {
             receive_buffer_size *= 2;
             receive_buffer = realloc(receive_buffer, receive_buffer_size);
@@ -345,8 +356,9 @@ int sendall(int s, char *buf, int *len) {
     }
 
     // Get the URI of the client request
-    relative_path = get_relative_path(receive_buffer, socket_descriptor, connection_descriptor, &is_free);
-    // If client request is invalid, close connection and do not continue process it
+    relative_path = get_relative_path(receive_buffer, socket_descriptor,
+         connection_descriptor, &is_free);
+    // If client request is invalid, close connection and do not continue
     if (relative_path == NULL) {
         free(receive_buffer);
         receive_buffer = NULL;
@@ -354,7 +366,8 @@ int sendall(int s, char *buf, int *len) {
     }
 
     // Combine to get full path
-    full_path = (char *) malloc((strlen(relative_path) + strlen(web_root_path) + 1) * sizeof(char));
+    full_path = (char *) malloc((strlen(relative_path) +
+        strlen(web_root_path) + 1) * sizeof(char));
     assert(full_path != NULL);
     strcpy(full_path, web_root_path);
     strcat(full_path, relative_path);
@@ -378,79 +391,80 @@ int sendall(int s, char *buf, int *len) {
     if (file_found) {
         len = sizeof(STATUS_OK) - 1;
         strcpy(send_buffer, STATUS_OK);
-        n = sendall(connection_descriptor, send_buffer, &len); // trim the nullbyte
+        n = sendall(connection_descriptor, send_buffer, &len);
         if (n < 0) {
             perror("ERROR sending from socket");
             close(connection_descriptor);
             close(socket_descriptor);
-            exit(1);
+            exit(EXIT_FAILURE);
         }
 
         // Determine which content type to send
-        if (strcmp(content_type, "html") == 0) {
-            len = sizeof(MIME_HTML) - 1;
-            strcpy(send_buffer, MIME_HTML);
-            n = sendall(connection_descriptor, send_buffer, &len); // trim the nullbyte
+        if (strcmp(content_type, "jpg") == 0) {
+            len = sizeof(MIME_JPG) - 1;
+            strcpy(send_buffer, MIME_JPG);
+            n = sendall(connection_descriptor, send_buffer, &len);
             if (n < 0) {
                 perror("ERROR sending from socket");
                 close(connection_descriptor);
                 close(socket_descriptor);
-                exit(1);
+                exit(EXIT_FAILURE);
             }
         }
         else if (strcmp(content_type, "css") == 0) {
             len = sizeof(MIME_CSS) - 1;
             strcpy(send_buffer, MIME_CSS);
-            n = sendall(connection_descriptor, send_buffer, &len); // trim the nullbyte
+            n = sendall(connection_descriptor, send_buffer, &len);
             if (n < 0) {
                 perror("ERROR sending from socket");
                 close(connection_descriptor);
                 close(socket_descriptor);
-                exit(1);
+                exit(EXIT_FAILURE);
             }
         }
         else if (strcmp(content_type, "js") == 0) {
             len = sizeof(MIME_JS) - 1;
             strcpy(send_buffer, MIME_JS);
-            n = sendall(connection_descriptor, send_buffer, &len); // trim the nullbyte
+            n = sendall(connection_descriptor, send_buffer, &len);
             if (n < 0) {
                 perror("ERROR sending from socket");
                 close(connection_descriptor);
                 close(socket_descriptor);
-                exit(1);
+                exit(EXIT_FAILURE);
             }
         }
         else {
-            len = sizeof(MIME_JPG) - 1;
-            strcpy(send_buffer, MIME_JPG);
-            n = sendall(connection_descriptor, send_buffer, &len);   // trim the nullbyte
+            len = sizeof(MIME_HTML) - 1;
+            strcpy(send_buffer, MIME_HTML);
+            n = sendall(connection_descriptor, send_buffer, &len);
             if (n < 0) {
                 perror("ERROR sending from socket");
                 close(connection_descriptor);
                 close(socket_descriptor);
-                exit(1);
+                exit(EXIT_FAILURE);
             }
         }
 
         len = sizeof(CRLF) - 1;
         strcpy(send_buffer, CRLF);
-        n = sendall(connection_descriptor, send_buffer, &len); // trim the nullbyte, end of header
+        n = sendall(connection_descriptor, send_buffer, &len);
         if (n < 0) {
             perror("ERROR sending from socket");
             close(connection_descriptor);
             close(socket_descriptor);
-            exit(1);
+            exit(EXIT_FAILURE);
         }
 
         // read file in chunks
-        while ((bytes_read = fread(send_buffer, sizeof(char), sizeof(send_buffer), file_descriptor))) {
+        while ((bytes_read = fread(send_buffer, sizeof(char),
+        sizeof(send_buffer), file_descriptor))) {
             len = bytes_read;
             n = sendall(connection_descriptor, send_buffer, &len);
             if (n < 0) {
                 perror("ERROR sending from socket");
                 close(connection_descriptor);
                 close(socket_descriptor);
-                exit(1);
+                exit(EXIT_FAILURE);
             }
         }
         fclose(file_descriptor); // close the file
@@ -464,38 +478,38 @@ int sendall(int s, char *buf, int *len) {
             perror("ERROR sending from socket");
             close(connection_descriptor);
             close(socket_descriptor);
-            exit(1);
+            exit(EXIT_FAILURE);
         }
 
         len = sizeof(MIME_HTML) - 1;
         strcpy(send_buffer, MIME_HTML);
-        n = sendall(connection_descriptor, send_buffer, &len); // trim the nullbyte
+        n = sendall(connection_descriptor, send_buffer, &len);
         if (n < 0) {
             perror("ERROR sending from socket");
             close(connection_descriptor);
             close(socket_descriptor);
-            exit(1);
+            exit(EXIT_FAILURE);
         }
 
         len = sizeof(CRLF) - 1;
         strcpy(send_buffer, CRLF);
-        n = sendall(connection_descriptor, send_buffer, &len); // trim the nullbyte, end of header
+        n = sendall(connection_descriptor, send_buffer, &len);
         if (n < 0) {
             perror("ERROR sending from socket");
             close(connection_descriptor);
             close(socket_descriptor);
-            exit(1);
+            exit(EXIT_FAILURE);
         }
 
         // Send 404 body
         len = sizeof(BODY_NOT_FOUND) - 1;
         strcpy(send_buffer, BODY_NOT_FOUND);
-        n = sendall(connection_descriptor, send_buffer, &len); // trim the nullbyte
+        n = sendall(connection_descriptor, send_buffer, &len);
         if (n < 0) {
             perror("ERROR sending from socket");
             close(connection_descriptor);
             close(socket_descriptor);
-            exit(1);
+            exit(EXIT_FAILURE);
         }
     }
 
@@ -536,7 +550,8 @@ int sendall(int s, char *buf, int *len) {
      *connection_descriptor_pointer = connection_descriptor;
 
      // Create the thread and process error
-     creation_status = pthread_create(&thread, &attr, process_request, connection_descriptor_pointer);
+     creation_status = pthread_create(&thread, &attr, process_request,
+         connection_descriptor_pointer);
      // Process error
      if (creation_status != 0) {
          fprintf(stderr, "Error creating thread");
